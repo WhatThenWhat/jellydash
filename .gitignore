@@ -37,7 +37,9 @@ next-env.d.ts
 
 .env
 
-app/db
+# Runtime data lives in app/db; the TypeScript modules there are source and stay tracked.
+app/db/*
+!app/db/*.ts
 app/login-page/price-table.html
 app/login-page/premium-card.html
 public/social-post-template.png

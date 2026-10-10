@@ -73,6 +73,21 @@ npm run dev
 
 ---
 
+## 🐳 **Run with Docker**
+
+1. Copy `.env.example` to `.env` and fill in the values (see **Environment Variables** below).
+2. Build and start:
+
+```bash
+docker compose up -d --build
+```
+
+3. Open `http://<docker-host>:4000/login` and sign in with your Jellyfin admin account.
+
+Settings, roles, ratings and watchlist data live in the `jellydash-data` volume (mounted at `/app/app/db`), so they survive rebuilds. The `NEXT_PUBLIC_*` values are baked in at build time; after changing them, rebuild with `docker compose up -d --build`.
+
+---
+
 ## 🔧 **Environment Variables**
 
 ```env
