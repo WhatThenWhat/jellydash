@@ -89,6 +89,15 @@ export default function GroupDialog({ open, onOpenChange, group }: Readonly<Prop
 
   const handleSave = async () => {
     const rating = (ratings ?? []).find((r) => r.id === ratingId);
+    if (rating && extractRatingNumber(rating.value) == null) {
+      toast({
+        title: 'Rating has no number',
+        description: `"${rating.label}" has no number in its Value, so it cannot set a cap. Add a number to the Value in Manage Ratings or choose another rating.`,
+        variant: 'destructive',
+        duration: 7000
+      });
+      return;
+    }
     try {
       await save.mutateAsync({
         ...(editing ? { id: group!.id } : {}),
@@ -144,7 +153,9 @@ export default function GroupDialog({ open, onOpenChange, group }: Readonly<Prop
                   <SelectLabel>Rating</SelectLabel>
                   <SelectItem value={NO_CAP} className="cursor-pointer">No cap</SelectItem>
                   {(ratings ?? []).map((r) => (
-                    <SelectItem key={r.id} value={r.id} className="cursor-pointer">{r.label}</SelectItem>
+                    <SelectItem key={r.id} value={r.id} className="cursor-pointer" disabled={extractRatingNumber(r.value) == null}>
+                      {r.label} {extractRatingNumber(r.value) == null ? '(no number: cannot cap)' : `(cap ${extractRatingNumber(r.value)})`}
+                    </SelectItem>
                   ))}
                 </SelectGroup>
               </SelectContent>
