@@ -69,7 +69,7 @@ Install the Wizarr fork (branch `access-groups` of `WhatThenWhat/wizarr`) next t
 ## Development
 
 ```
-npm ci
+npm ci --legacy-peer-deps
 npm run dev        # http://localhost:4000
 npm test           # core logic, uses Node's built-in test runner and a fake Jellyfin
 ```
