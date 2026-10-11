@@ -14,7 +14,14 @@ This is a fork of [developed-by-will/jellydash](https://github.com/developed-by-
 - **Manage Ratings**: the list of ratings offered in pickers.
 - **Wizarr integration**: a Wizarr fork reads groups from this app so each invite can place the new user in a group on each server. See [docs/internal-api.md](docs/internal-api.md).
 
-Rate Content and Watchlist Settings (polling) are being ported to multi-server and arrive in a later release.
+- **Rate Content**: lists the selected server's movies and shows, unrated first, and writes the parental rating back to Jellyfin (the field is locked so a metadata refresh does not undo it). Search by title. Only ratings from Manage Ratings can be written. Posters load through this app, so the browser never contacts Jellyfin or sees the API key.
+- **Watchlist** (per server, off by default): mirrors each user's favorites into playlists. Movies go to one Watchlist playlist. A favorited show, season or episode goes to a playlist named after the show with the unwatched episodes. Unfavoriting removes the item (a show or season removes the whole playlist). Watched items are removed and an empty playlist is deleted. Name and images for the playlist and the Playlists home tile are set on the Watchlist Settings page.
+
+### How the Watchlist works
+
+Jellyfin sends no event for favorites without a plugin, so this app polls. Every `WATCHLIST_POLL_SECONDS` (default 60, range 30 to 3600) it reads each enabled user's favorites on each server where the Watchlist is switched on and compares them with the set it already handled. The first check after switching it on therefore adds every existing favorite. Names and images are re-applied at most every 30 minutes and on every save, because Jellyfin regenerates those images during library scans.
+
+Limits: a change shows up on the next check, not instantly. A show whose playlist was emptied by watching does not get new episodes added later unless it is unfavorited and favorited again. Playlists are created in each user's account by the API key's administrator rights; switch the feature on only where that is wanted.
 
 ## Install
 

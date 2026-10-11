@@ -51,3 +51,12 @@ export async function jsonBody(request: NextRequest): Promise<Record<string, unk
     throw new ValidationError('Request body must be JSON');
   }
 }
+
+/** Like jsonBody but allows a top-level array. */
+export async function jsonBodyAny(request: NextRequest): Promise<unknown> {
+  try {
+    return await request.json();
+  } catch {
+    throw new ValidationError('Request body must be JSON');
+  }
+}
