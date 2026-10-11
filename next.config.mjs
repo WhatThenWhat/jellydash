@@ -14,7 +14,10 @@ const nextConfig = {
     // Exposes the dynamic version to client components
     NEXT_PUBLIC_APP_VERSION: process.env.APP_VERSION || gitVersion
   },
-  poweredByHeader: false
+  poweredByHeader: false,
+  // Only static local images are used. Disabling the optimizer removes the /_next/image endpoint,
+  // which the session middleware does not cover.
+  images: { unoptimized: true }
 };
 
 export default nextConfig;
