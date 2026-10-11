@@ -1,4 +1,4 @@
-// Usage: docker run --rm -it ghcr.io/whatthenwhat/jellydash-multi node scripts/hash-password.mjs
+// Usage: docker run --rm -it --entrypoint node ghcr.io/whatthenwhat/jellydash-multi scripts/hash-password.mjs
 // Prints an ADMIN_PASSWORD_HASH value. In compose files, escape each $ as $$.
 import { randomBytes, scryptSync } from 'node:crypto';
 import { createInterface } from 'node:readline';

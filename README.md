@@ -31,7 +31,7 @@ You need Docker and a reverse proxy that terminates TLS (Synology DSM reverse pr
 2. Create the admin password hash:
 
    ```
-   docker run --rm -it ghcr.io/whatthenwhat/jellydash-multi node scripts/hash-password.mjs
+   docker run --rm -it --entrypoint node ghcr.io/whatthenwhat/jellydash-multi scripts/hash-password.mjs
    ```
 
    Put the printed value in `ADMIN_PASSWORD_HASH`. In a compose `.env` file, write each `$` as `$$`.
