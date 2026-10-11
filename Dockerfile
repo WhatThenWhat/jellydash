@@ -22,6 +22,7 @@ ENV NODE_ENV=production \
     NODE_OPTIONS=--no-warnings
 COPY --from=build /app ./
 RUN mkdir -p /data && chown -R node:node /data /app/.next \
+ && chmod -R go+rX /app \
  && chmod +x /app/docker-entrypoint.sh
 USER node
 VOLUME ["/data"]
