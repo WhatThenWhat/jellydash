@@ -11,6 +11,7 @@ export type RatableItem = {
   OfficialRating?: string;
   ImageTags?: Record<string, string>;
   LockedFields?: string[];
+  Tags?: string[];
 };
 
 export type RatingChoice = { value: string };
@@ -76,7 +77,7 @@ export async function loadRatableItems(client: JellyfinClient): Promise<RatableI
       Recursive: 'true',
       ParentId: folder.ItemId,
       IncludeItemTypes: 'Movie,Series',
-      Fields: 'DateCreated,OfficialRating',
+      Fields: 'DateCreated,OfficialRating,Tags',
       EnableUserData: 'false',
       EnableImages: 'false'
     });
@@ -111,7 +112,7 @@ export async function searchRatable(client: JellyfinClient, query: string): Prom
   const q = new URLSearchParams({
     Recursive: 'true',
     IncludeItemTypes: 'Series,Movie',
-    Fields: 'DateCreated,OfficialRating',
+    Fields: 'DateCreated,OfficialRating,Tags',
     EnableUserData: 'false',
     SearchTerm: query,
     Limit: '200'
@@ -151,6 +152,105 @@ export async function updateRatings(
       const item = await client.get<RatableItem & Record<string, unknown>>(`/Users/${userId}/Items/${id}`);
       const locked = new Set([...(item.LockedFields ?? []), 'OfficialRating']);
       await client.post(`/Items/${id}`, { ...item, OfficialRating: rating, LockedFields: [...locked] });
+      result.updated += 1;
+    } catch (error) {
+      result.failed.push({ id, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return result;
+}
+
+// ---- Tag Content ----
+
+export type TagPage = {
+  Items: Array<{ Id: string; Name: string; Type: string; DateCreated?: string; Tags: string[] }>;
+  TotalRecordCount: number;
+  MovieCount: number;
+  SeriesCount: number;
+  Page: number;
+  TotalPages: number;
+};
+
+export type TagFilter = { tag?: string; has?: boolean };
+
+const lower = (tags: string[] | undefined) => (tags ?? []).map((t) => t.trim().toLowerCase());
+
+/** Newest first. With a filter, only titles that do (has) or do not (not has) carry the tag. */
+export function tagPageOf(items: RatableItem[], filter: TagFilter, page: number, limit: number): TagPage {
+  const wanted = filter.tag?.trim().toLowerCase();
+  const kept = wanted
+    ? items.filter((i) => lower(i.Tags).includes(wanted) === (filter.has !== false))
+    : items;
+  const sorted = [...kept].sort((a, b) => time(b) - time(a));
+  const start = Math.max(0, page) * limit;
+  return {
+    Items: sorted.slice(start, start + limit).map((i) => ({
+      Id: i.Id, Name: i.Name, Type: i.Type, DateCreated: i.DateCreated, Tags: i.Tags ?? []
+    })),
+    TotalRecordCount: sorted.length,
+    MovieCount: sorted.filter((i) => i.Type === 'Movie').length,
+    SeriesCount: sorted.filter((i) => i.Type === 'Series').length,
+    Page: page,
+    TotalPages: Math.ceil(sorted.length / limit)
+  };
+}
+
+export type TagUpdate = { ItemId: unknown; Add?: unknown; Remove?: unknown };
+export type TagUpdateResult = { updated: number; unchanged: number; failed: Array<{ id: string; error: string }> };
+
+function tagList(value: unknown, allowed: Set<string>, label: string): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw new ValidationError(`${label} must be a list`);
+  const out: string[] = [];
+  for (const raw of value) {
+    if (typeof raw !== 'string') throw new ValidationError('A tag must be text');
+    const tag = raw.trim().toLowerCase();
+    if (!allowed.has(tag)) throw new ValidationError(`"${raw}" is not in the Manage Tags list`);
+    if (!out.includes(tag)) out.push(tag);
+  }
+  return out;
+}
+
+/**
+ * Add and remove tags one item at a time. Existing tags are kept: only the named tags are added
+ * or removed (matched ignoring case). The Tags field is locked so a metadata refresh does not
+ * overwrite the result, and each item is read back to confirm the change stuck.
+ */
+export async function updateTags(
+  client: JellyfinClient,
+  updates: TagUpdate[],
+  managedTags: string[]
+): Promise<TagUpdateResult> {
+  if (!Array.isArray(updates)) throw new ValidationError('Expected a list of updates');
+  if (updates.length > 200) throw new ValidationError('At most 200 items can be updated at once');
+  const allowed = new Set(managedTags);
+  const prepared = updates.map((u) => {
+    if (!isItemId(u?.ItemId)) throw new ValidationError('An item id is not valid');
+    const add = tagList(u.Add, allowed, 'Add');
+    const remove = tagList(u.Remove, allowed, 'Remove');
+    if (add.some((t) => remove.includes(t))) throw new ValidationError('A tag cannot be added and removed in the same update');
+    return { id: u.ItemId, add, remove };
+  });
+
+  const userId = await adminUserId(client);
+  const result: TagUpdateResult = { updated: 0, unchanged: 0, failed: [] };
+  for (const { id, add, remove } of prepared) {
+    try {
+      const item = await client.get<RatableItem & Record<string, unknown>>(`/Users/${userId}/Items/${id}`);
+      const current = item.Tags ?? [];
+      const next = current.filter((t) => !remove.includes(t.trim().toLowerCase()));
+      for (const tag of add) if (!next.some((t) => t.trim().toLowerCase() === tag)) next.push(tag);
+      const same = next.length === current.length && next.every((t, i) => t === current[i]);
+      if (same) {
+        result.unchanged += 1;
+        continue;
+      }
+      const locked = new Set([...(item.LockedFields ?? []), 'Tags']);
+      await client.post(`/Items/${id}`, { ...item, Tags: next, LockedFields: [...locked] });
+      const after = await client.get<RatableItem>(`/Users/${userId}/Items/${id}`);
+      const got = lower(after.Tags);
+      const bad = [...add.filter((t) => !got.includes(t)), ...remove.filter((t) => got.includes(t))];
+      if (bad.length) throw new JellyfinError('bad_response', `Jellyfin did not keep the change for: ${bad.join(', ')}`);
       result.updated += 1;
     } catch (error) {
       result.failed.push({ id, error: error instanceof Error ? error.message : String(error) });

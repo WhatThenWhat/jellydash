@@ -26,13 +26,23 @@ export function normalizeTags(input: unknown): string[] {
   const out: string[] = [];
   for (const raw of input) {
     if (typeof raw !== 'string') throw new ValidationError('Tags must be strings');
-    const tag = raw.trim();
+    const tag = raw.trim().toLowerCase();
     if (!tag) continue;
     if (tag.length > 100) throw new ValidationError('A tag is longer than 100 characters');
-    if (!out.some((t) => t.toLowerCase() === tag.toLowerCase())) out.push(tag);
+    if (!out.includes(tag)) out.push(tag);
   }
   if (out.length > 50) throw new ValidationError('At most 50 tags are allowed');
   return out;
+}
+
+/** A single tag as stored and written to Jellyfin: trimmed, lowercase, no control characters. */
+export function normalizeTag(value: unknown): string {
+  if (typeof value !== 'string') throw new ValidationError('A tag must be text');
+  const tag = value.trim().toLowerCase();
+  if (!tag) throw new ValidationError('A tag is required');
+  if (tag.length > 50) throw new ValidationError('A tag must be 50 characters or fewer');
+  if (/[\u0000-\u001f,]/.test(tag)) throw new ValidationError('A tag cannot contain commas or control characters');
+  return tag;
 }
 
 export function requireName(value: unknown, label: string): string {

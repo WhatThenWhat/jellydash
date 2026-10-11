@@ -1,4 +1,4 @@
-import { Baby, Clapperboard, ImagePlay, Star } from 'lucide-react';
+import { Baby, Clapperboard, ImagePlay, Star, Tag, Tags } from 'lucide-react';
 import { NavItem } from '.';
 
 const classes = 'text-muted-foreground';
@@ -10,6 +10,18 @@ export const content: NavItem = {
   icon: ImagePlay,
   canAccess: false,
   items: [
+    {
+      title: 'Tag Content',
+      url: baseUrl + '/tag-content',
+      icon: <Tag className={classes} />,
+      canAccess: true
+    },
+    {
+      title: 'Manage Tags',
+      url: baseUrl + '/manage-tags',
+      icon: <Tags className={classes} />,
+      canAccess: true
+    },
     {
       title: 'Rate Content',
       url: baseUrl + '/parental-ratings',

@@ -76,7 +76,7 @@ export default function GroupDialog({ open, onOpenChange, group }: Readonly<Prop
   useEffect(() => {
     if (!open) return;
     setName(group?.name ?? '');
-    setBlocked(group ? group.blocked_tags.join(', ') : 'mature');
+    setBlocked(group ? group.blocked_tags.join(', ') : '');
     setAllowed(group ? group.allowed_tags.join(', ') : '');
     setDownloads(group?.allow_downloads ?? false);
     setLiveTv(group?.allow_live_tv ?? false);
@@ -99,7 +99,7 @@ export default function GroupDialog({ open, onOpenChange, group }: Readonly<Prop
       return;
     }
     try {
-      await save.mutateAsync({
+      const saved = await save.mutateAsync({
         ...(editing ? { id: group!.id } : {}),
         name,
         max_rating: rating ? extractRatingNumber(rating.value) : null,
@@ -110,12 +110,24 @@ export default function GroupDialog({ open, onOpenChange, group }: Readonly<Prop
         max_sessions: Number(sessions),
         library_ids: libraryIds
       });
-      toast({
-        title: editing ? 'Access group saved' : 'Access group created',
-        description: editing ? 'Applies to new members. Existing users keep their current settings.' : name,
-        variant: 'success',
-        duration: 4000
-      });
+      const apply = saved?.apply;
+      if (editing && apply && apply.failed.length > 0) {
+        toast({
+          title: 'Group saved, but some members were not updated',
+          description: `${apply.applied} of ${apply.total} updated. ${apply.failed[0].username}: ${apply.failed[0].error}. Save again to retry.`,
+          variant: 'destructive',
+          duration: 9000
+        });
+      } else {
+        toast({
+          title: editing ? 'Access group saved' : 'Access group created',
+          description: editing
+            ? `Applied to ${apply?.applied ?? 0} existing member(s) and all new members.${apply?.skipped.length ? ` ${apply.skipped.length} administrator account(s) skipped.` : ''}`
+            : name,
+          variant: 'success',
+          duration: 5000
+        });
+      }
       onOpenChange(false);
     } catch (err: any) {
       toast({ title: 'Could not save access group', description: err?.message, variant: 'destructive', duration: 5000 });
@@ -131,8 +143,9 @@ export default function GroupDialog({ open, onOpenChange, group }: Readonly<Prop
         <DialogHeader>
           <DialogTitle>{editing ? 'Edit Access Group' : 'New Access Group'}</DialogTitle>
           <DialogDescription>
-            Applied when a user is created on this server. Existing users keep the settings they
-            already have.
+            Applied to new members and, each time you save, to every existing member. Settings
+            changed by hand on a member in Jellyfin are overwritten. Leave the rating cap and
+            both tag fields empty for no restrictions beyond the libraries you tick.
           </DialogDescription>
         </DialogHeader>
 
@@ -164,7 +177,7 @@ export default function GroupDialog({ open, onOpenChange, group }: Readonly<Prop
 
           <Label htmlFor="group-blocked" className="flex flex-col gap-1">
             Blocked tags (comma separated)
-            <Input id="group-blocked" value={blocked} onChange={(e) => setBlocked(e.target.value)} disabled={save.isPending} placeholder="mature" />
+            <Input id="group-blocked" value={blocked} onChange={(e) => setBlocked(e.target.value)} disabled={save.isPending} placeholder="e.g. hold (leave empty for none)" />
           </Label>
 
           <Label htmlFor="group-allowed" className="flex flex-col gap-1">

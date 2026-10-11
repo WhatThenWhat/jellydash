@@ -15,7 +15,7 @@ export const POST = route(async (request) => {
   const { ids, groupId } = parse(await jsonBody(request));
   if (svc.store.getGroup(groupId).server_id !== server.id) throw new ValidationError('Group is not on the selected server');
   svc.store.addLibrariesToGroup(groupId, ids);
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, apply: await svc.applyGroupToMembers(groupId) });
 });
 
 export const DELETE = route(async (request) => {
@@ -23,5 +23,5 @@ export const DELETE = route(async (request) => {
   const { ids, groupId } = parse(await jsonBody(request));
   if (svc.store.getGroup(groupId).server_id !== server.id) throw new ValidationError('Group is not on the selected server');
   svc.store.removeLibrariesFromGroup(groupId, ids);
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, apply: await svc.applyGroupToMembers(groupId) });
 });

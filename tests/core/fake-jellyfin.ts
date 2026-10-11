@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type Server } from 'node:http';
 export type FakeUser = { Id: string; Name: string; Policy: Record<string, unknown>; Password?: string; Config?: Record<string, unknown> };
 export type FakeItem = {
   Id: string; Name: string; Type: string; SeriesId?: string; SeriesName?: string; ParentId?: string; Index?: number;
-  DateCreated?: string; OfficialRating?: string; LockedFields?: string[];
+  DateCreated?: string; OfficialRating?: string; LockedFields?: string[]; Tags?: string[];
 };
 export type FakePlaylist = { Id: string; Name: string; Owner: string; entries: Array<{ entryId: string; itemId: string }> };
 
@@ -143,7 +143,7 @@ export async function startFake(): Promise<Fake> {
       if (req.method === 'DELETE') return playlists.delete(id) ? send(204) : send(404);
       if (req.method === 'POST') {
         const it = catalog.get(id);
-        if (it) { it.OfficialRating = b.OfficialRating; it.LockedFields = b.LockedFields; return send(204); }
+        if (it) { it.OfficialRating = b.OfficialRating; it.LockedFields = b.LockedFields; if (b.Tags !== undefined) it.Tags = b.Tags; return send(204); }
         if (playlists.has(id) || id.startsWith('d')) { names.set(id, b.Name); return send(204); }
         return send(404);
       }

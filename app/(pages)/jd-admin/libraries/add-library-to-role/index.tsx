@@ -45,6 +45,19 @@ export default function AddLibraryToRole() {
     mutationKey: 'role-access-remove'
   });
 
+  // Library changes are pushed to existing members as well. Warn when some members were not updated.
+  const warnIfNotApplied = (result: any) => {
+    const apply = result?.apply;
+    if (apply?.failed?.length) {
+      toast({
+        title: 'Saved, but some members were not updated',
+        description: `${apply.applied} of ${apply.total} updated. ${apply.failed[0].username}: ${apply.failed[0].error}. Save the group again to retry.`,
+        variant: 'destructive',
+        duration: 9000
+      });
+    }
+  };
+
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [pendingLibraryId, setPendingLibraryId] = useState<string | null>(null);
   const [bulkPending, setBulkPending] = useState(false);
@@ -68,9 +81,9 @@ export default function AddLibraryToRole() {
 
     try {
       if (hasAccess) {
-        await removeFromList({ id: library.id, list: selectedRole.id });
+        warnIfNotApplied(await removeFromList({ id: library.id, list: selectedRole.id }));
       } else {
-        await addToList({ id: library.id, list: selectedRole.id });
+        warnIfNotApplied(await addToList({ id: library.id, list: selectedRole.id }));
       }
       await refetchLibraries();
     } catch (err: any) {
@@ -95,8 +108,7 @@ export default function AddLibraryToRole() {
 
     try {
       const ids = targets.map((lib) => lib.id);
-      if (grant) await addToList({ ids, list: selectedRole.id });
-      else await removeFromList({ ids, list: selectedRole.id });
+      warnIfNotApplied(grant ? await addToList({ ids, list: selectedRole.id }) : await removeFromList({ ids, list: selectedRole.id }));
       await refetchLibraries();
 
       toast({

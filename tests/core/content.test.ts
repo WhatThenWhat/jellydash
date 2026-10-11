@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { after, before, beforeEach, describe, it } from 'node:test';
-import { loadRatableItems, pageOf, ratableLibraries, searchRatable, sortForRating, updateRatings } from '../../lib/core/content.ts';
+import { loadRatableItems, pageOf, ratableLibraries, searchRatable, sortForRating, tagPageOf, updateRatings, updateTags } from '../../lib/core/content.ts';
 import { openDb } from '../../lib/core/db.ts';
 import { Service } from '../../lib/core/service.ts';
 import { Store } from '../../lib/core/store.ts';
@@ -99,5 +99,74 @@ describe('updating ratings', () => {
     fake.addUser('plain', false);
     const it1 = add('One', 'Movie', '2020-01-01T00:00:00Z');
     await assert.rejects(updateRatings(client(), [{ ItemId: it1.Id, Rating: 'G' }], choices), /administrator/);
+  });
+});
+
+describe('tag content', () => {
+  const managed = ['hold', 'family'];
+
+  it('adds a tag, keeps existing tags, locks the field and verifies the result', async () => {
+    const it1 = add('One', 'Movie', '2020-01-01T00:00:00Z');
+    it1.Tags = ['Action'];
+    it1.LockedFields = ['Name'];
+    const r = await updateTags(client(), [{ ItemId: it1.Id, Add: ['HOLD'] }], managed);
+    assert.deepEqual(r, { updated: 1, unchanged: 0, failed: [] });
+    assert.deepEqual(fake.catalog.get(it1.Id)!.Tags, ['Action', 'hold']);
+    assert.deepEqual([...fake.catalog.get(it1.Id)!.LockedFields!].sort(), ['Name', 'Tags']);
+  });
+
+  it('removes only the named tag, ignoring case, and leaves the rest', async () => {
+    const it1 = add('One', 'Movie', '2020-01-01T00:00:00Z');
+    it1.Tags = ['Hold', 'Action'];
+    const r = await updateTags(client(), [{ ItemId: it1.Id, Remove: ['hold'] }], managed);
+    assert.equal(r.updated, 1);
+    assert.deepEqual(fake.catalog.get(it1.Id)!.Tags, ['Action']);
+  });
+
+  it('does not write when nothing changes', async () => {
+    const it1 = add('One', 'Movie', '2020-01-01T00:00:00Z');
+    it1.Tags = ['hold'];
+    const r = await updateTags(client(), [{ ItemId: it1.Id, Add: ['hold'] }, { ItemId: it1.Id, Remove: ['family'] }], managed);
+    assert.deepEqual(r, { updated: 0, unchanged: 2, failed: [] });
+    assert.ok(!fake.calls.some((c) => c.startsWith('POST /Items')));
+  });
+
+  it('rejects unmanaged tags, conflicting add and remove, and bad ids before writing anything', async () => {
+    const it1 = add('One', 'Movie', '2020-01-01T00:00:00Z');
+    await assert.rejects(updateTags(client(), [{ ItemId: it1.Id, Add: ['mature'] }], managed), /Manage Tags/);
+    await assert.rejects(updateTags(client(), [{ ItemId: it1.Id, Add: ['hold'], Remove: ['hold'] }], managed), /added and removed/);
+    await assert.rejects(updateTags(client(), [{ ItemId: '../etc', Add: ['hold'] }], managed), /item id/);
+    assert.ok(!fake.calls.some((c) => c.startsWith('POST /Items')));
+  });
+
+  it('reports a failed read-back instead of claiming success', async () => {
+    const it1 = add('One', 'Movie', '2020-01-01T00:00:00Z');
+    const original = fake.catalog.get(it1.Id)!;
+    Object.defineProperty(original, 'Tags', { get: () => [], set: () => undefined, configurable: true, enumerable: true });
+    const r = await updateTags(client(), [{ ItemId: it1.Id, Add: ['hold'] }], managed);
+    assert.equal(r.updated, 0);
+    assert.match(r.failed[0].error, /did not keep/);
+  });
+
+  it('lists titles newest first and filters by tag', () => {
+    const items = [
+      { Id: 'a', Name: 'Old', Type: 'Movie', DateCreated: '2019-01-01T00:00:00Z', Tags: ['Hold'] },
+      { Id: 'b', Name: 'New', Type: 'Series', DateCreated: '2023-01-01T00:00:00Z', Tags: [] },
+      { Id: 'c', Name: 'Mid', Type: 'Movie', DateCreated: '2021-01-01T00:00:00Z' }
+    ];
+    assert.deepEqual(tagPageOf(items, {}, 0, 10).Items.map((i) => i.Name), ['New', 'Mid', 'Old']);
+    assert.deepEqual(tagPageOf(items, { tag: 'hold', has: true }, 0, 10).Items.map((i) => i.Name), ['Old']);
+    const without = tagPageOf(items, { tag: 'hold', has: false }, 0, 10);
+    assert.deepEqual(without.Items.map((i) => i.Name), ['New', 'Mid']);
+    assert.equal(without.MovieCount, 1);
+    assert.equal(without.SeriesCount, 1);
+  });
+
+  it('loads tags with the title list', async () => {
+    const it1 = add('One', 'Movie', '2020-01-01T00:00:00Z');
+    it1.Tags = ['hold'];
+    const items = await loadRatableItems(client());
+    assert.deepEqual(items[0].Tags, ['hold']);
+    assert.ok(fake.calls.length > 0);
   });
 });

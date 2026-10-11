@@ -25,7 +25,7 @@ export const POST = route(async (request) => {
   return NextResponse.json(dto(svc.store, svc.store.createGroup(server.id, body)), { status: 201 });
 });
 
-/** Edits apply to future members only. Existing Jellyfin users keep the policy they were given. */
+/** Saving a group also pushes its settings to every recorded member. The save itself is not undone if some members fail. */
 export const PATCH = route(async (request) => {
   const { svc, server } = selectedServer(request);
   const body = await jsonBody(request);
@@ -33,7 +33,9 @@ export const PATCH = route(async (request) => {
   if (svc.store.getGroup(id).server_id !== server.id) throw new ValidationError('Group is not on the selected server');
   const { id: _omit, ...rest } = body;
   void _omit;
-  return NextResponse.json(dto(svc.store, svc.store.updateGroup(id, rest)));
+  const group = svc.store.updateGroup(id, rest);
+  const apply = await svc.applyGroupToMembers(id);
+  return NextResponse.json({ ...dto(svc.store, group), apply });
 });
 
 export const DELETE = route(async (request) => {

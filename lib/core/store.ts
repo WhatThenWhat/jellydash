@@ -3,7 +3,7 @@ import { decrypt, encrypt } from './crypto.ts';
 import type { Db } from './db.ts';
 import { ConflictError, NotFoundError, ValidationError } from './errors.ts';
 import type { GroupSpec } from './policy.ts';
-import { normalizeTags, optionalInt, requireName } from './validate.ts';
+import { normalizeTag, normalizeTags, optionalInt, requireName } from './validate.ts';
 
 export type ServerRow = {
   id: string;
@@ -296,6 +296,10 @@ export class Store {
     return this.db.prepare('SELECT * FROM memberships WHERE server_id = ? ORDER BY username COLLATE NOCASE').all(serverId) as MembershipRow[];
   }
 
+  listGroupMembers(groupId: string): MembershipRow[] {
+    return this.db.prepare('SELECT * FROM memberships WHERE group_id = ? ORDER BY username COLLATE NOCASE').all(groupId) as MembershipRow[];
+  }
+
   deleteMembership(serverId: string, jfUserId: string): void {
     this.db.prepare('DELETE FROM memberships WHERE server_id = ? AND jf_user_id = ?').run(serverId, jfUserId);
   }
@@ -329,5 +333,24 @@ export class Store {
 
   deleteRating(id: string): void {
     this.db.prepare('DELETE FROM ratings WHERE id = ?').run(id);
+  }
+
+  // ---- content tags ----
+
+  listContentTags(): string[] {
+    return (this.db.prepare('SELECT tag FROM content_tags ORDER BY position, tag').all() as Array<{ tag: string }>).map((r) => r.tag);
+  }
+
+  addContentTag(value: unknown): string {
+    const tag = normalizeTag(value);
+    if (this.listContentTags().includes(tag)) throw new ConflictError('That tag is already in the list');
+    const pos = (this.db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS p FROM content_tags').get() as { p: number }).p;
+    this.db.prepare('INSERT INTO content_tags (tag, position) VALUES (?, ?)').run(tag, pos);
+    return tag;
+  }
+
+  /** Only removes the tag from the picker. Items already carrying it in Jellyfin keep it. */
+  deleteContentTag(value: unknown): void {
+    this.db.prepare('DELETE FROM content_tags WHERE tag = ?').run(normalizeTag(value));
   }
 }

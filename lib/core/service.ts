@@ -20,6 +20,13 @@ export type ResolvedGroup = {
   policy_patch: Record<string, unknown>;
 };
 
+export type ApplyResult = {
+  total: number;
+  applied: number;
+  skipped: Array<{ username: string; reason: string }>;
+  failed: Array<{ username: string; error: string }>;
+};
+
 export class Service {
   store: Store;
   opts: ServiceOptions;
@@ -149,6 +156,41 @@ export class Service {
     const group = this.store.getGroup(groupId);
     if (group.server_id !== serverId) throw new ValidationError('Access group does not belong to this server');
     await this.clientFor(serverId).applyPolicyPatch(jfUserId, groupPolicyPatch(this.store.groupSpec(group)));
+  }
+
+  /**
+   * Push a group's current settings to every recorded member. One member failing does not stop the
+   * others. Administrators are skipped so a group never restricts an admin account. If the server
+   * cannot be reached, the remaining members are reported as not attempted instead of waiting on
+   * a timeout for each.
+   */
+  async applyGroupToMembers(groupId: string): Promise<ApplyResult> {
+    const group = this.store.getGroup(groupId);
+    const client = this.clientFor(group.server_id);
+    const patch = groupPolicyPatch(this.store.groupSpec(group));
+    const members = this.store.listGroupMembers(groupId);
+    const result: ApplyResult = { total: members.length, applied: 0, skipped: [], failed: [] };
+    let down: string | null = null;
+    for (const m of members) {
+      if (down) {
+        result.failed.push({ username: m.username, error: `Not attempted: ${down}` });
+        continue;
+      }
+      try {
+        const user = await client.getUser(m.jf_user_id);
+        if (user.Policy?.IsAdministrator === true) {
+          result.skipped.push({ username: m.username, reason: 'Administrator account' });
+          continue;
+        }
+        await client.applyPolicyPatch(m.jf_user_id, patch);
+        result.applied += 1;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        result.failed.push({ username: m.username, error: message });
+        if (error instanceof JellyfinError && (error.kind === 'timeout' || error.kind === 'unreachable')) down = message;
+      }
+    }
+    return result;
   }
 
   groupsForServer(serverId: string): GroupRow[] {

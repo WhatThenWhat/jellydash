@@ -50,7 +50,7 @@ describe('misc', () => {
     assert.throws(() => normalizeBaseUrl('ftp://a.example'), /https/);
   });
   it('normalizes tags', () => {
-    assert.deepEqual(normalizeTags([' Mature ', 'mature', '', 'x']), ['Mature', 'x']);
+    assert.deepEqual(normalizeTags([' Mature ', 'mature', '', 'X']), ['mature', 'x']);
     assert.throws(() => normalizeTags('x'));
   });
   it('classifies fetch errors', () => {

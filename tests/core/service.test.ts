@@ -171,6 +171,41 @@ describe('ratings and group edits', () => {
     assert.throws(() => svc.store.updateRating('nope', 'x', 'y'), /not found/);
   });
 
+  it('applies a saved group to every recorded member and reports the result', async () => {
+    const a = await svc.createUser({ serverId, groupId, username: 'm1' });
+    const b = await svc.createUser({ serverId, groupId, username: 'm2' });
+    svc.store.updateGroup(groupId, { blocked_tags: ['Hold'], max_rating: null });
+    const r = await svc.applyGroupToMembers(groupId);
+    assert.deepEqual({ total: r.total, applied: r.applied, failed: r.failed.length, skipped: r.skipped.length }, { total: 2, applied: 2, failed: 0, skipped: 0 });
+    for (const u of [a.user, b.user]) assert.deepEqual(fake.users.get(u.Id)!.Policy.BlockedTags, ['hold']);
+  });
+
+  it('skips administrators, reports a missing user and keeps going', async () => {
+    const m = await svc.createUser({ serverId, groupId, username: 'm1' });
+    const adminUser = fake.addUser('boss', true);
+    svc.store.recordMembership({ serverId, groupId, groupName: 'Kids', jfUserId: adminUser.Id, username: 'boss', source: 'test' });
+    svc.store.recordMembership({ serverId, groupId, groupName: 'Kids', jfUserId: 'f'.repeat(32), username: 'gone', source: 'test' });
+    svc.store.updateGroup(groupId, { blocked_tags: ['hold'] });
+    const r = await svc.applyGroupToMembers(groupId);
+    assert.equal(r.applied, 1);
+    assert.deepEqual(r.skipped, [{ username: 'boss', reason: 'Administrator account' }]);
+    assert.equal(r.failed.length, 1);
+    assert.equal(r.failed[0].username, 'gone');
+    assert.deepEqual(fake.users.get(m.user.Id)!.Policy.BlockedTags, ['hold']);
+    assert.notDeepEqual(fake.users.get(adminUser.Id)!.Policy.BlockedTags, ['hold']);
+  });
+
+  it('stores tags lowercase and manages the Tag Content list', () => {
+    svc.store.updateGroup(groupId, { blocked_tags: ['Hold', 'HOLD', ' mature '] });
+    assert.deepEqual(svc.store.getGroup(groupId).blocked_tags, ['hold', 'mature']);
+    assert.equal(svc.store.addContentTag(' Hold '), 'hold');
+    assert.throws(() => svc.store.addContentTag('hold'), /already/);
+    assert.throws(() => svc.store.addContentTag('a,b'), /commas/);
+    assert.deepEqual(svc.store.listContentTags(), ['hold']);
+    svc.store.deleteContentTag('HOLD');
+    assert.deepEqual(svc.store.listContentTags(), []);
+  });
+
   it('updates a group without touching existing members', async () => {
     const { user } = await svc.createUser({ serverId, groupId, username: 'member' });
     const before = JSON.stringify(fake.users.get(user.Id)!.Policy);

@@ -19,6 +19,15 @@ export type GroupDto = {
   max_sessions: number;
   library_ids: string[];
   member_count: number;
+  /** Present on a save: how pushing the group to existing members went. */
+  apply?: ApplySummary;
+};
+
+export type ApplySummary = {
+  total: number;
+  applied: number;
+  skipped: Array<{ username: string; reason: string }>;
+  failed: Array<{ username: string; error: string }>;
 };
 
 export type LibraryWithGroups = {

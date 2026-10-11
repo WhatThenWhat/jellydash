@@ -108,6 +108,13 @@ const MIGRATIONS: string[] = [
     last_error TEXT,
     last_summary TEXT
   );
+  `,
+  // v4: tags offered on the Tag Content page (global, lowercase)
+  `
+  CREATE TABLE content_tags (
+    tag TEXT PRIMARY KEY,
+    position INTEGER NOT NULL
+  );
   `
 ];
 
