@@ -46,6 +46,16 @@ You need Docker and a reverse proxy that terminates TLS (Synology DSM reverse pr
 
 Data lives in `/data` (SQLite). Back up that folder and keep `MASTER_KEY`: it decrypts the stored API keys.
 
+## Upgrade
+
+1. Stop the container and copy `data` to `data.bak-YYMMDD`. Database changes are applied on start and cannot be reversed by an older image.
+2. Pull the new tag and start it: `docker compose pull jellydash-multi && docker compose up -d jellydash-multi`.
+3. To roll back, restore the backup together with the previous image tag.
+
+## Use with Wizarr
+
+Install the Wizarr fork (branch `access-groups` of `WhatThenWhat/wizarr`) next to this app on a private Docker network. Set the same `INTERNAL_API_TOKEN` here and as `ACCESS_GROUPS_TOKEN` in Wizarr, and set `ACCESS_GROUPS_URL` to this container's private address (for example `http://jellydash-multi:4000`). A complete two-container example is `deploy/compose.yaml` in the Wizarr fork.
+
 ## Security notes
 
 - Jellyfin API keys are encrypted at rest with AES-256-GCM using `MASTER_KEY`. Use one dedicated key per app per server so a key can be revoked on its own.
