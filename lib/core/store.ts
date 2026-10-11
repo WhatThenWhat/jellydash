@@ -31,6 +31,8 @@ export type GroupRow = {
   updated_at: string;
 };
 
+export type RatingRow = { id: string; label: string; value: string };
+
 export type MembershipRow = {
   id: number;
   server_id: string;
@@ -296,5 +298,36 @@ export class Store {
 
   deleteMembership(serverId: string, jfUserId: string): void {
     this.db.prepare('DELETE FROM memberships WHERE server_id = ? AND jf_user_id = ?').run(serverId, jfUserId);
+  }
+
+  // ---- ratings ----
+
+  listRatings(): RatingRow[] {
+    return this.db.prepare('SELECT id, label, value FROM ratings ORDER BY position, label COLLATE NOCASE').all() as RatingRow[];
+  }
+
+  createRating(label: unknown, value: unknown): RatingRow {
+    const l = requireName(label, 'Label');
+    const v = requireName(value, 'Value');
+    const base = l.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'rating';
+    const taken = new Set(this.listRatings().map((r) => r.id));
+    let id = base;
+    for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
+    const pos = (this.db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS p FROM ratings').get() as { p: number }).p;
+    this.db.prepare('INSERT INTO ratings (id, label, value, position) VALUES (?, ?, ?, ?)').run(id, l, v, pos);
+    return { id, label: l, value: v };
+  }
+
+  updateRating(id: string, label: unknown, value: unknown): RatingRow {
+    const cur = this.listRatings().find((r) => r.id === id);
+    if (!cur) throw new NotFoundError('Rating not found');
+    const l = typeof label === 'string' && label.trim() ? requireName(label, 'Label') : cur.label;
+    const v = typeof value === 'string' && value.trim() ? requireName(value, 'Value') : cur.value;
+    this.db.prepare('UPDATE ratings SET label = ?, value = ? WHERE id = ?').run(l, v, id);
+    return { id, label: l, value: v };
+  }
+
+  deleteRating(id: string): void {
+    this.db.prepare('DELETE FROM ratings WHERE id = ?').run(id);
   }
 }

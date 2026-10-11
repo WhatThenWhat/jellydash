@@ -1,6 +1,6 @@
 'use client';
 
-import { Rating } from '@/app/db/ratings';
+import { Rating } from '@/lib/shared/ratings';
 import { DataTable } from '@/components/breeze-ui/data-table/data-table';
 import { toast } from '@/components/breeze-ui/toast/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -27,7 +27,8 @@ export default function ManageRatings() {
 
   const { data, isError, error, isPending } = useQueryHandler<Rating[]>({
     queryKey: 'ratings',
-    endpoint: 'ratings'
+    endpoint: 'ratings',
+    serverScoped: false
   });
 
   const { mutateAsync: createRating, isPending: isCreating } = useMutationHandler({

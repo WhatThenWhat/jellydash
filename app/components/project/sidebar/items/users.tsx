@@ -1,4 +1,4 @@
-import { UserCheck, UserCog, UserRoundPlus, Users } from 'lucide-react';
+import { Server, UserCheck, UserCog, UserRoundPlus, Users } from 'lucide-react';
 
 const baseUrl = '/users';
 
@@ -10,6 +10,7 @@ export const users = {
   items: [
     { title: 'Users', url: baseUrl, icon: <Users /> },
     { title: 'Create', url: baseUrl + '/create', icon: <UserRoundPlus /> },
-    { title: 'Roles', url: '/manage-user-roles', icon: <UserCheck /> }
+    { title: 'Access Groups', url: '/manage-user-roles', icon: <UserCheck /> },
+    { title: 'Servers', url: '/servers', icon: <Server /> }
   ]
 };

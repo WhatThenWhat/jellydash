@@ -1,14 +1,13 @@
 'use client';
 
-import { LibraryWithRoles } from '@/app/api/libraries/roles/route';
-import { Badge } from '@/components/ui/badge';
+import type { LibraryWithGroups } from '@/lib/shared/types';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
 
 type Props = {
-  library: LibraryWithRoles;
+  library: LibraryWithGroups;
   hasAccess: boolean;
   isPending: boolean;
   onToggle: () => void;
@@ -40,11 +39,6 @@ export default function LibraryRow({ library, hasAccess, isPending, onToggle }: 
         {library.name}
       </Label>
 
-      {library.excluded && (
-        <Badge variant="outline" className="text-xs text-muted-foreground">
-          Hidden from home
-        </Badge>
-      )}
     </div>
   );
 }

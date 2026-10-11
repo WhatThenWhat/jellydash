@@ -1,60 +1,43 @@
-import { LoginPayloadType } from '@/app/(pages)/login/formValidations';
-import { AuthenticateByNameResponse } from '@/app/@types';
-import { ANONYMOUS_POST } from '@/app/utils/requestHandler';
-import { NextAuthOptions, User } from 'next-auth';
+import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
+import { verifyPassword } from '../../../lib/core/crypto.ts';
+import { checkLoginAllowed, recordLoginFailure, recordLoginSuccess } from '../../../lib/server/loginLimiter.ts';
 
-if (!process.env.NEXTAUTH_SECRET || !process.env.NEXTAUTH_URL) {
-  throw new Error('NEXTAUTH_SECRET or NEXTAUTH_URL is not defined');
-}
-
-const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET;
-const NEXTAUTH_URL = process.env.NEXTAUTH_URL;
+// A valid hash of a random string, verified against when the username is wrong so timing does not reveal it.
+const DUMMY_HASH =
+  'scrypt$16384$8$1$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
 
 export const authOptions: NextAuthOptions = {
-  secret: NEXTAUTH_SECRET,
-  session: {
-    strategy: 'jwt'
-  },
+  secret: process.env.NEXTAUTH_SECRET,
+  session: { strategy: 'jwt', maxAge: 8 * 60 * 60 },
+  jwt: { maxAge: 8 * 60 * 60 },
   providers: [
     CredentialsProvider({
-      name: 'Jellyfin',
+      name: 'Jellydash',
       credentials: {
         username: { label: 'Username', type: 'text' },
-        password: { label: 'password', type: 'password' }
+        password: { label: 'Password', type: 'password' }
       },
       async authorize(credentials) {
-        if (!credentials?.username || !credentials?.password) {
-          return null;
+        const username = credentials?.username ?? '';
+        const password = credentials?.password ?? '';
+        if (!username || !password) return null;
+
+        if (!checkLoginAllowed(username)) throw new Error('Too many failed attempts. Try again later.');
+
+        const adminUser = process.env.ADMIN_USERNAME ?? '';
+        const adminHash = process.env.ADMIN_PASSWORD_HASH;
+        const userOk = adminUser.length > 0 && username === adminUser;
+        const passOk = verifyPassword(password, userOk ? adminHash : DUMMY_HASH);
+
+        if (userOk && passOk) {
+          recordLoginSuccess(username);
+          return { id: 'admin', name: adminUser };
         }
-
-        const authResponse = await ANONYMOUS_POST<LoginPayloadType, AuthenticateByNameResponse>(
-          `${NEXTAUTH_URL}/api/users/authenticate-by-name`,
-          {
-            Username: credentials.username,
-            Pw: credentials.password
-          }
-        );
-
-        return {
-          JellyfinSession: authResponse
-        } as User;
+        recordLoginFailure(username);
+        return null;
       }
     })
   ],
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.JellyfinSession = user.JellyfinSession;
-      }
-      return token;
-    },
-    async session({ session, token }) {
-      session.user.JellyfinSession = token.JellyfinSession;
-      return session;
-    }
-  },
-  pages: {
-    signIn: '/(pages)/login'
-  }
+  pages: { signIn: '/' }
 };

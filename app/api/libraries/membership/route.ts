@@ -1,64 +1,27 @@
-import { appendLibraryLine, catchError, removeLibraryLine, parseLibraries } from '@/app/api/helpers';
-import { EXCLUDED_LIBRARIES_PATH, getRoleLibraryFile, getRoles } from '@/app/db/packages';
-import { NextRequest, NextResponse } from 'next/server';
+import { ValidationError } from '@/lib/core/errors';
+import { requireId } from '@/lib/core/validate';
+import { jsonBody, route, selectedServer } from '@/lib/server/http';
+import { NextResponse } from 'next/server';
 
-// A membership "list" is either a role id (dynamic - whatever exists in roles.json) or the
-// special EXCLUDED flag file.
-function resolveFile(list: string): string | null {
-  if (list === 'EXCLUDED') return EXCLUDED_LIBRARIES_PATH;
-
-  const role = getRoles().find((r) => r.id === list);
-  return role ? getRoleLibraryFile(role.id) : null;
+function parse(body: Record<string, unknown>) {
+  const ids = Array.isArray(body.ids) ? body.ids.map(String) : typeof body.id === 'string' ? [body.id] : [];
+  if (!ids.length) throw new ValidationError('id or ids is required');
+  return { ids, groupId: requireId(body.list, 'Group') };
 }
 
-// Add a library to a role's (or EXCLUDED's) file.
-export async function POST(request: NextRequest) {
-  try {
-    const { id, name, list } = await request.json();
+/** Add one or more libraries (`id` or `ids`) to the access group named in `list`. */
+export const POST = route(async (request) => {
+  const { svc, server } = selectedServer(request);
+  const { ids, groupId } = parse(await jsonBody(request));
+  if (svc.store.getGroup(groupId).server_id !== server.id) throw new ValidationError('Group is not on the selected server');
+  svc.store.addLibrariesToGroup(groupId, ids);
+  return NextResponse.json({ ok: true });
+});
 
-    if (!id || !name || !list) {
-      return NextResponse.json({ message: 'id, name, and list are required' }, { status: 400 });
-    }
-
-    const file = resolveFile(list);
-
-    if (!file) {
-      return NextResponse.json({ message: `Unknown list "${list}"` }, { status: 400 });
-    }
-
-    const alreadyPresent = parseLibraries(file).some((lib) => lib.id === id);
-
-    if (alreadyPresent) {
-      return NextResponse.json({ ok: true, message: 'Already present' }, { status: 200 });
-    }
-
-    appendLibraryLine(file, id, name);
-
-    return NextResponse.json({ ok: true }, { status: 200 });
-  } catch (error) {
-    return catchError(error);
-  }
-}
-
-// Remove a library from a role's (or EXCLUDED's) file.
-export async function DELETE(request: NextRequest) {
-  try {
-    const { id, list } = await request.json();
-
-    if (!id || !list) {
-      return NextResponse.json({ message: 'id and list are required' }, { status: 400 });
-    }
-
-    const file = resolveFile(list);
-
-    if (!file) {
-      return NextResponse.json({ message: `Unknown list "${list}"` }, { status: 400 });
-    }
-
-    removeLibraryLine(file, id);
-
-    return NextResponse.json({ ok: true }, { status: 200 });
-  } catch (error) {
-    return catchError(error);
-  }
-}
+export const DELETE = route(async (request) => {
+  const { svc, server } = selectedServer(request);
+  const { ids, groupId } = parse(await jsonBody(request));
+  if (svc.store.getGroup(groupId).server_id !== server.id) throw new ValidationError('Group is not on the selected server');
+  svc.store.removeLibrariesFromGroup(groupId, ids);
+  return NextResponse.json({ ok: true });
+});

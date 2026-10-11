@@ -1,34 +1,35 @@
 'use client';
 
-import { LibraryWithRoles } from '@/app/api/libraries/roles/route';
+import type { LibraryWithGroups } from '@/lib/shared/types';
+import { POST } from '@/app/utils/requestHandler';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from '@/components/breeze-ui/toast/hooks/use-toast';
 import { DataTable } from '@/components/breeze-ui/data-table/data-table';
 import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import useQueryHandler from '@/hooks/useQueryHandler';
 import { RefreshCw } from 'lucide-react';
+import { useState } from 'react';
 import { columns } from './data-table/columns';
 
 export default function SyncLibraries() {
-  const {
-    data,
-    isError,
-    error,
-    isPending,
-    isFetching,
-    refetch
-  } = useQueryHandler<LibraryWithRoles[]>({
-    queryKey: 'libraries-roles',
-    endpoint: 'libraries/roles'
+  const queryClient = useQueryClient();
+  const [syncing, setSyncing] = useState(false);
+  const { data, isError, error, isPending, isFetching } = useQueryHandler<LibraryWithGroups[]>({
+    queryKey: 'libraries-groups',
+    endpoint: 'libraries/groups'
   });
 
   const handleSync = async () => {
+    setSyncing(true);
     try {
-      await refetch();
+      const result = await POST<object, { added: number; removed: number; total: number }>('/api/libraries/sync', {});
+      await queryClient.invalidateQueries({ queryKey: ['libraries-groups'] });
+      await queryClient.invalidateQueries({ queryKey: ['groups'] });
 
       toast({
         title: 'Libraries synced',
-        description: 'Pulled the latest library list from Jellyfin.',
+        description: `${result.total} libraries on the server (${result.added} new, ${result.removed} removed).`,
         variant: 'success',
         duration: 4000
       });
@@ -39,6 +40,8 @@ export default function SyncLibraries() {
         variant: 'destructive',
         duration: 4000
       });
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -54,13 +57,13 @@ export default function SyncLibraries() {
           <CardTitle>Libraries</CardTitle>
           <CardDescription>
             Every library Jellyfin currently reports. Click a badge to grant or revoke that
-            role&apos;s access.
+            access group&apos;s access.
           </CardDescription>
         </div>
 
-        <Button onClick={handleSync} disabled={isFetching}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
-          {isFetching ? 'Syncing...' : 'Sync'}
+        <Button onClick={handleSync} disabled={syncing || isFetching}>
+          <RefreshCw className={`h-4 w-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
+          {syncing ? 'Syncing...' : 'Sync'}
         </Button>
       </CardHeader>
 

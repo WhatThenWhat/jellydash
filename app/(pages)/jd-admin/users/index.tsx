@@ -1,12 +1,12 @@
 'use client';
 
-import { User } from '@/app/api/types';
+import type { UserRowDto } from '@/lib/shared/types';
 import { DataTable } from '@/components/breeze-ui/data-table/data-table';
 import useQueryHandler from '@/hooks/useQueryHandler';
 import { columns } from './data-table/columns';
 
 export default function UsersPage() {
-  const { data, isError, error, isPending, isFetching } = useQueryHandler<User[]>({
+  const { data, isError, error, isPending, isFetching } = useQueryHandler<UserRowDto[]>({
     queryKey: 'users-all',
     endpoint: 'users/all'
   });

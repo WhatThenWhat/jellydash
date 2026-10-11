@@ -45,3 +45,5 @@ app/login-page/premium-card.html
 public/social-post-template.png
 public/watchlist-movies-image.png
 public/watchlist-playlists-image.png
+# Runtime data
+/data

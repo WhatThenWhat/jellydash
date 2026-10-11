@@ -1,55 +1,30 @@
-import { catchError, requestApi } from '@/app/api/helpers';
-import { User } from '@/app/api/types';
-import { NextRequest, NextResponse } from 'next/server';
+import type { UserRowDto } from '@/lib/shared/types';
+import { route, selectedServer } from '@/lib/server/http';
+import { NextResponse } from 'next/server';
 
-export async function GET(request: NextRequest) {
-  try {
-    const endpoint = '/Users';
+export const GET = route(async (request) => {
+  const { svc, server, client } = selectedServer(request);
+  const users = await client.listUsers();
+  const members = new Map(svc.store.listMemberships(server.id).map((m) => [m.jf_user_id.replace(/-/g, '').toLowerCase(), m.group_name]));
 
-    const getUsers = await requestApi(endpoint, request, {
-      method: 'GET',
-      requiresAuth: true
-    });
+  users.sort((a, b) => new Date(b.LastActivityDate ?? 0).getTime() - new Date(a.LastActivityDate ?? 0).getTime());
 
-    if (!getUsers.ok) {
-      const errText = await getUsers.text();
-      return NextResponse.json(
-        { message: 'Jellyfin rejected the /Users request', error: errText },
-        { status: getUsers.status }
-      );
-    }
-
-    const users: User[] = await getUsers.json();
-
-    // Order by Last Activity Date
-    users.sort(
-      (a: User, b: User) =>
-        new Date(b.LastActivityDate).getTime() - new Date(a.LastActivityDate).getTime()
-    );
-
-    if (users.length > 0) {
-      return NextResponse.json(
-        users.map(
-          (user: User) =>
-            ({
-              Name: user.Name,
-              Id: user.Id,
-              Policy: {
-                MaxParentalRating: user.Policy.MaxParentalRating,
-                IsDisabled: user.Policy.IsDisabled,
-                EnableLiveTvAccess: user.Policy.EnableLiveTvAccess,
-                IsAdministrator: user.Policy.IsAdministrator
-              },
-              LastActivityDate: user.LastActivityDate,
-              LastLoginDate: user.LastLoginDate
-            }) as User
-        ),
-        { status: 200 }
-      );
-    }
-
-    return NextResponse.json({ message: `Error getting list of users` }, { status: 400 });
-  } catch (error) {
-    return catchError(error);
-  }
-}
+  const out: UserRowDto[] = users.map((u) => {
+    const p = (u.Policy ?? {}) as Record<string, unknown>;
+    return {
+      Id: u.Id,
+      Name: u.Name,
+      LastActivityDate: u.LastActivityDate,
+      LastLoginDate: u.LastLoginDate,
+      Group: members.get(u.Id.replace(/-/g, '').toLowerCase()) ?? null,
+      Policy: {
+        MaxParentalRating: (p.MaxParentalRating as number | null | undefined) ?? null,
+        IsDisabled: p.IsDisabled === true,
+        EnableLiveTvAccess: p.EnableLiveTvAccess === true,
+        EnableContentDownloading: p.EnableContentDownloading === true,
+        IsAdministrator: p.IsAdministrator === true
+      }
+    };
+  });
+  return NextResponse.json(out);
+});

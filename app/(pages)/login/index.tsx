@@ -14,7 +14,6 @@ import { formValidationRules, LoginPayloadType } from './formValidations';
 
 export default function Login() {
   const { toast } = useToast();
-  const [tries, setTries] = useState(3);
   const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<z.infer<typeof formValidationRules>>({
@@ -32,23 +31,11 @@ export default function Login() {
     });
 
     if (result?.error) {
-      if (tries === 1) {
-        toast({
-          title: 'Login Failed',
-          description: 'Too many failed attempts. You maybe have been locked out.',
-          variant: 'destructive'
-        });
-      } else {
-        toast({
-          title: 'Login Failed',
-          description: `You have ${tries} tries left before being locked out.`,
-          variant: 'destructive'
-        });
-
-        setTries(tries - 1);
-      }
-
-      console.log('Error:', result?.error);
+      toast({
+        title: 'Login Failed',
+        description: 'Wrong username or password, or too many failed attempts. Wait 15 minutes if locked out.',
+        variant: 'destructive'
+      });
       setIsLoading(false);
     } else {
       redirect('/jd-admin');
@@ -67,7 +54,7 @@ export default function Login() {
           companyLogoAlt="Jellydash Logo"
           formWidth={300}
           providers={['jellyfin']}
-          title="A Jellyfin Management Dashboard"
+          title="Jellyfin Management Dashboard"
           loading={isLoading}
           control={form.control}
         />

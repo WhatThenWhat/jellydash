@@ -1,54 +1,37 @@
-import { useQuery, useQueryClient, UseQueryResult } from '@tanstack/react-query';
+import { useQuery, UseQueryResult } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
+import { useServer } from './useServer';
 
 type UseQueryHandlerProps = {
   queryKey: string | unknown[];
   endpoint: string;
-  requiresAuth?: boolean;
-  invalidateQueryKeys?: (string | unknown[])[];
+  /** Server-scoped queries (the default) wait for a selected server and are keyed by it. */
+  serverScoped?: boolean;
   enabled?: boolean;
 };
 
-type Headers = Record<string, string>;
-
 export default function useQueryHandler<T>(props: UseQueryHandlerProps): UseQueryResult<T, Error> {
-  const {
-    queryKey,
-    endpoint,
-    requiresAuth = true,
-    invalidateQueryKeys = [],
-    enabled = true
-  } = props;
+  const { queryKey, endpoint, serverScoped = true, enabled = true } = props;
+  const { status } = useSession();
+  const { selectedId } = useServer();
 
-  const { data: session } = useSession();
-  const queryClient = useQueryClient();
+  const baseKey = Array.isArray(queryKey) ? queryKey : [queryKey];
+  const key = serverScoped ? [...baseKey, selectedId] : baseKey;
 
   return useQuery<T>({
-    queryKey: Array.isArray(queryKey) ? queryKey : [queryKey],
+    queryKey: key,
     queryFn: async () => {
-      const headers: Headers = {};
-
-      if (requiresAuth) {
-        if (!session?.user?.JellyfinSession?.AccessToken) {
-          throw new Error('Authentication required but no token available');
-        }
-        headers['x-access-token'] = session.user.JellyfinSession.AccessToken;
-      }
-
-      const res = await fetch(`/api/${endpoint}`, { headers });
-
+      const res = await fetch(`/api/${endpoint}`);
       if (!res.ok) {
-        throw new Error(`Failed to fetch ${endpoint}`);
+        let message = `Failed to fetch ${endpoint}`;
+        try {
+          const body = await res.json();
+          if (body?.message) message = body.message;
+        } catch {}
+        throw new Error(message);
       }
-
-      for (const key of invalidateQueryKeys) {
-        queryClient.invalidateQueries({
-          queryKey: Array.isArray(key) ? key : [key]
-        });
-      }
-
       return res.json();
     },
-    enabled: enabled && (requiresAuth ? !!session?.user?.JellyfinSession?.AccessToken : true)
+    enabled: enabled && status === 'authenticated' && (!serverScoped || !!selectedId)
   });
 }

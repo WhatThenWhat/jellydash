@@ -1,7 +1,6 @@
 'use client';
 
-import { LibraryWithRoles } from '@/app/api/libraries/roles/route';
-import { Role } from '@/app/db/packages';
+import type { GroupDto, LibraryWithGroups } from '@/lib/shared/types';
 import { toast } from '@/components/breeze-ui/toast/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,18 +19,18 @@ import { useEffect, useState } from 'react';
 import LibraryRow from './components/library-row';
 
 export default function AddLibraryToRole() {
-  const { data: roles, isPending: rolesPending } = useQueryHandler<Role[]>({
-    queryKey: 'roles',
-    endpoint: 'roles'
+  const { data: roles, isPending: rolesPending } = useQueryHandler<GroupDto[]>({
+    queryKey: 'groups',
+    endpoint: 'groups'
   });
 
   const {
     data: libraries,
     isPending: librariesPending,
     refetch: refetchLibraries
-  } = useQueryHandler<LibraryWithRoles[]>({
-    queryKey: 'libraries-roles',
-    endpoint: 'libraries/roles'
+  } = useQueryHandler<LibraryWithGroups[]>({
+    queryKey: 'libraries-groups',
+    endpoint: 'libraries/groups'
   });
 
   const { mutateAsync: addToList } = useMutationHandler({
@@ -62,7 +61,7 @@ export default function AddLibraryToRole() {
 
   const selectedRole = roles?.find((role) => role.id === selectedRoleId) ?? null;
 
-  const handleToggle = async (library: LibraryWithRoles, hasAccess: boolean) => {
+  const handleToggle = async (library: LibraryWithGroups, hasAccess: boolean) => {
     if (!selectedRole) return;
 
     setPendingLibraryId(library.id);
@@ -71,7 +70,7 @@ export default function AddLibraryToRole() {
       if (hasAccess) {
         await removeFromList({ id: library.id, list: selectedRole.id });
       } else {
-        await addToList({ id: library.id, name: library.name, list: selectedRole.id });
+        await addToList({ id: library.id, list: selectedRole.id });
       }
       await refetchLibraries();
     } catch (err: any) {
@@ -89,19 +88,15 @@ export default function AddLibraryToRole() {
   const handleBulk = async (grant: boolean) => {
     if (!selectedRole || !libraries) return;
 
-    const targets = libraries.filter((lib) => lib.roles.includes(selectedRole.id) !== grant);
+    const targets = libraries.filter((lib) => lib.groups.includes(selectedRole.id) !== grant);
     if (targets.length === 0) return;
 
     setBulkPending(true);
 
     try {
-      await Promise.all(
-        targets.map((lib) =>
-          grant
-            ? addToList({ id: lib.id, name: lib.name, list: selectedRole.id })
-            : removeFromList({ id: lib.id, list: selectedRole.id })
-        )
-      );
+      const ids = targets.map((lib) => lib.id);
+      if (grant) await addToList({ ids, list: selectedRole.id });
+      else await removeFromList({ ids, list: selectedRole.id });
       await refetchLibraries();
 
       toast({
@@ -125,10 +120,9 @@ export default function AddLibraryToRole() {
   return (
     <Card className="flex flex-col gap-6 p-10">
       <CardHeader className="p-0">
-        <CardTitle>Manage Role Access</CardTitle>
+        <CardTitle>Manage Access Group Libraries</CardTitle>
         <CardDescription>
-          Pick a role, then check off which libraries its users can see. This only controls library
-          access - it&apos;s separate from whether a library shows on the home screen.
+          Pick an access group, then check off which libraries its users can see on the selected server.
         </CardDescription>
       </CardHeader>
 
@@ -138,7 +132,7 @@ export default function AddLibraryToRole() {
         <div className="flex flex-col gap-1 max-w-xs">
           <Select value={selectedRoleId ?? undefined} onValueChange={setSelectedRoleId}>
             <SelectTrigger>
-              <SelectValue placeholder="Choose a role" />
+              <SelectValue placeholder="Choose an access group" />
             </SelectTrigger>
             <SelectContent>
               {(roles ?? []).map((role) => (
@@ -151,8 +145,8 @@ export default function AddLibraryToRole() {
 
           {selectedRole && (
             <CardDescription className="text-xs">
-              {selectedRole.maxParentalRating != null
-                ? `Max parental rating: ${selectedRole.maxParentalRating}`
+              {selectedRole.max_rating != null
+                ? `Max parental rating: ${selectedRole.max_rating}`
                 : 'No parental rating cap'}
             </CardDescription>
           )}
@@ -189,7 +183,7 @@ export default function AddLibraryToRole() {
           ))}
 
         {!isPending && !selectedRole && (
-          <CardDescription>No roles yet - create one on the Roles page first.</CardDescription>
+          <CardDescription>No access groups yet. Create one on the Access Groups page first.</CardDescription>
         )}
 
         {!isPending &&
@@ -198,9 +192,9 @@ export default function AddLibraryToRole() {
             <LibraryRow
               key={library.id}
               library={library}
-              hasAccess={library.roles.includes(selectedRole.id)}
+              hasAccess={library.groups.includes(selectedRole.id)}
               isPending={pendingLibraryId === library.id || bulkPending}
-              onToggle={() => handleToggle(library, library.roles.includes(selectedRole.id))}
+              onToggle={() => handleToggle(library, library.groups.includes(selectedRole.id))}
             />
           ))}
       </div>

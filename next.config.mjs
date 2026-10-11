@@ -11,18 +11,10 @@ try {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   env: {
-    // Exposes the dynamic version to your client components
-    NEXT_PUBLIC_APP_VERSION: gitVersion
+    // Exposes the dynamic version to client components
+    NEXT_PUBLIC_APP_VERSION: process.env.APP_VERSION || gitVersion
   },
-  images: {
-    remotePatterns: [
-      {
-        protocol: process.env.NEXT_PUBLIC_IMAGE_PROTOCOL,
-        hostname: process.env.NEXT_PUBLIC_IMAGE_HOSTNAME
-      }
-    ]
-  },
-  allowedDevOrigins: [process.env.NEXT_PUBLIC_ALLOWED_DEV_ORIGIN]
+  poweredByHeader: false
 };
 
 export default nextConfig;

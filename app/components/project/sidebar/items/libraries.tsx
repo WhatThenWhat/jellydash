@@ -1,4 +1,4 @@
-import { ArrowUpDown, BookDown, BookX, Library } from 'lucide-react';
+import { BookDown, BookX, Library } from 'lucide-react';
 
 const classes = 'text-muted-foreground';
 
@@ -16,13 +16,7 @@ export const libraries = {
       canAccess: true
     },
     {
-      title: 'Reorder Home',
-      url: baseUrl + '/reorder-home',
-      icon: <ArrowUpDown className={classes} />,
-      canAccess: true
-    },
-    {
-      title: 'Add Library to Role',
+      title: 'Add Library to Access Group',
       url: baseUrl + '/add-library-to-role',
       icon: <BookX className={classes} />,
       canAccess: true

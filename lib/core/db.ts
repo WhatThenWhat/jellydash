@@ -1,5 +1,8 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+// node:sqlite ships with Node >= 22.13. Its typings need @types/node >= 22.5, so the import is untyped
+// here and the small surface this app uses is described below.
+// @ts-ignore
 import { DatabaseSync } from 'node:sqlite';
 
 const MIGRATIONS: string[] = [
@@ -54,14 +57,34 @@ const MIGRATIONS: string[] = [
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+  `,
+  // v2: parental rating choices offered in pickers (global, not per server)
+  `
+  CREATE TABLE ratings (
+    id TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    value TEXT NOT NULL,
+    position INTEGER NOT NULL
+  );
   `
 ];
 
-export type Db = DatabaseSync;
+type SqlValue = string | number | bigint | null | Uint8Array;
+
+export interface Statement {
+  run(...params: SqlValue[]): unknown;
+  get(...params: SqlValue[]): unknown;
+  all(...params: SqlValue[]): unknown[];
+}
+
+export interface Db {
+  exec(sql: string): void;
+  prepare(sql: string): Statement;
+}
 
 export function openDb(file: string): Db {
   if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true });
-  const db = new DatabaseSync(file);
+  const db: Db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
   migrate(db);
   return db;

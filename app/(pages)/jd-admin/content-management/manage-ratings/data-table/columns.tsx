@@ -1,6 +1,6 @@
 'use client';
 
-import { Rating } from '@/app/db/ratings';
+import { Rating } from '@/lib/shared/ratings';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,

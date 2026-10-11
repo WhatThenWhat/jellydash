@@ -1,12 +1,13 @@
 'use client';
 
-import { User } from '@/app/api/types';
+import type { UserRowDto } from '@/lib/shared/types';
 import { bgSuccess } from '@/app/constants';
-import { Rating } from '@/app/db/ratings';
-import { AUTENTICATED_POST, DELETE } from '@/app/utils/requestHandler';
+import { extractRatingNumber, Rating } from '@/lib/shared/ratings';
+import { DELETE, POST } from '@/app/utils/requestHandler';
 import { DataTableColumnHeader } from '@/components/breeze-ui/data-table';
 import { toast } from '@/components/breeze-ui/toast/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -36,26 +37,18 @@ import useQueryHandler from '@/hooks/useQueryHandler';
 import { useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import { Loader2, MoreHorizontal } from 'lucide-react';
-import { useSession } from 'next-auth/react';
 import { useState } from 'react';
 import { formatDate } from './helpers';
 
 const NO_CAP = '__no-cap__';
 
-// Ratings are managed as label/value pairs (see Parental Ratings → Manage Ratings), but Jellyfin's MaxParentalRating
-// is a plain number. Values like "M/16" carry that number in the string, so we pull it out rather
-// than maintaining a second parallel numeric field.
-function extractRatingNumber(value: string): number | null {
-  const match = value.match(/\d+/);
-  return match ? Number(match[0]) : null;
-}
-
-function MaxRatingCell({ user }: Readonly<{ user: User }>) {
+function MaxRatingCell({ user }: Readonly<{ user: UserRowDto }>) {
   const [isSaving, setIsSaving] = useState(false);
 
   const { data: ratings } = useQueryHandler<Rating[]>({
     queryKey: 'ratings',
-    endpoint: 'ratings'
+    endpoint: 'ratings',
+    serverScoped: false
   });
 
   const { mutateAsync: updateMaxRating } = useMutationHandler({
@@ -121,9 +114,7 @@ function MaxRatingCell({ user }: Readonly<{ user: User }>) {
   );
 }
 
-function ActionsCell(user: Readonly<User>) {
-  const { data: session } = useSession();
-  const token = session?.user.JellyfinSession?.AccessToken ?? '';
+function ActionsCell(user: Readonly<UserRowDto>) {
   const [isLoading, setIsLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -131,11 +122,11 @@ function ActionsCell(user: Readonly<User>) {
   const handleStatusToggle = async () => {
     setIsLoading(true);
 
-    await AUTENTICATED_POST(
-      `/api/users/update-status`,
-      { Id: user.Id, IsDisabled: !user.Policy.IsDisabled },
-      token
-    );
+    try {
+      await POST(`/api/users/update-status`, { Id: user.Id, IsDisabled: !user.Policy.IsDisabled });
+    } catch (err: any) {
+      toast({ title: 'Failed to update user', description: err?.message, variant: 'destructive', duration: 4000 });
+    }
 
     queryClient.invalidateQueries({ queryKey: ['users-all'] });
     setIsLoading(false);
@@ -144,7 +135,12 @@ function ActionsCell(user: Readonly<User>) {
   const handleUserRemove = async () => {
     setIsLoading(true);
 
-    await DELETE(`/api/users/remove`, { Id: user.Id }, token);
+    try {
+      await DELETE(`/api/users/remove`, { Id: user.Id });
+      setOpen(false);
+    } catch (err: any) {
+      toast({ title: 'Failed to remove user', description: err?.message, variant: 'destructive', duration: 4000 });
+    }
 
     queryClient.invalidateQueries({ queryKey: ['users-all'] });
     setIsLoading(false);
@@ -154,17 +150,7 @@ function ActionsCell(user: Readonly<User>) {
     navigator.clipboard.writeText(text);
   };
 
-  <Dialog open={open} onOpenChange={setOpen}>
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>Are you absolutely sure?</DialogTitle>
-        <DialogDescription>
-          This action cannot be undone. This will permanently delete your account and remove your
-          data from our servers.
-        </DialogDescription>
-      </DialogHeader>
-    </DialogContent>
-  </Dialog>;
+
 
   return (
     <>
@@ -231,7 +217,33 @@ function ActionsCell(user: Readonly<User>) {
   );
 }
 
-export const columns: ColumnDef<User>[] = [
+function DownloadsCell({ user }: Readonly<{ user: UserRowDto }>) {
+  const [isSaving, setIsSaving] = useState(false);
+  const queryClient = useQueryClient();
+
+  const toggle = async (checked: boolean) => {
+    setIsSaving(true);
+    try {
+      await POST('/api/users/update-downloads', { Id: user.Id, EnableContentDownloading: checked });
+      await queryClient.invalidateQueries({ queryKey: ['users-all'] });
+    } catch (err: any) {
+      toast({ title: 'Failed to update downloads', description: err?.message, variant: 'destructive', duration: 4000 });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (user.Policy.IsAdministrator) return '—';
+
+  return (
+    <div className="flex items-center gap-2">
+      <Checkbox checked={user.Policy.EnableContentDownloading} onCheckedChange={(v) => toggle(v === true)} disabled={isSaving} />
+      {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+    </div>
+  );
+}
+
+export const columns: ColumnDef<UserRowDto>[] = [
   {
     accessorKey: 'Name',
     meta: { justAFlag: true },
@@ -245,9 +257,20 @@ export const columns: ColumnDef<User>[] = [
     cell: ({ row }) => <>{formatDate(row.getValue('LastActivityDate'))}</>
   },
   {
+    accessorKey: 'Group',
+    meta: { justAFlag: true },
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Access Group" />,
+    cell: ({ row }) => row.original.Group ?? '—'
+  },
+  {
     id: 'MaxParentalRating',
     header: ({ column }) => <DataTableColumnHeader column={column} title="Max Parental Rating" />,
     cell: ({ row }) => <MaxRatingCell user={row.original} />
+  },
+  {
+    id: 'downloads',
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Can Download" />,
+    cell: ({ row }) => <DownloadsCell user={row.original} />
   },
   {
     id: 'status',

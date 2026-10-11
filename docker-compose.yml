@@ -1,19 +1,14 @@
+# Standalone Jellydash (multi-server). For the combined Jellydash + Wizarr stack see deploy/compose.yaml.
 services:
   jellydash:
-    build:
-      context: .
-      args:
-        NEXT_PUBLIC_IMAGE_PROTOCOL: ${NEXT_PUBLIC_IMAGE_PROTOCOL:-https}
-        NEXT_PUBLIC_IMAGE_HOSTNAME: ${NEXT_PUBLIC_IMAGE_HOSTNAME:-}
-        NEXT_PUBLIC_ALLOWED_DEV_ORIGIN: ${NEXT_PUBLIC_ALLOWED_DEV_ORIGIN:-}
-    container_name: jellydash
+    image: ghcr.io/whatthenwhat/jellydash-multi:latest
+    container_name: jellydash-multi
     restart: unless-stopped
     ports:
-      - "4000:4000"
+      - "127.0.0.1:4000:4000"   # reverse proxy terminates TLS and forwards here
     env_file:
       - .env
+    environment:
+      DATA_DIR: /data
     volumes:
-      - jellydash-data:/app/app/db
-
-volumes:
-  jellydash-data:
+      - ./data:/data

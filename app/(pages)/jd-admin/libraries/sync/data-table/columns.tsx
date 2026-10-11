@@ -1,8 +1,7 @@
 'use client';
 
-import { LibraryWithRoles } from '@/app/api/libraries/roles/route';
+import type { GroupDto, LibraryWithGroups } from '@/lib/shared/types';
 import { bgDestructive, bgSuccess } from '@/app/constants';
-import { Role } from '@/app/db/packages';
 import { toast } from '@/components/breeze-ui/toast/hooks/use-toast';
 import { DataTableColumnHeader } from '@/components/breeze-ui/data-table';
 import { Badge } from '@/components/ui/badge';
@@ -12,27 +11,27 @@ import { ColumnDef } from '@tanstack/react-table';
 import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
 
-function RolesCell({ library }: Readonly<{ library: LibraryWithRoles }>) {
+function RolesCell({ library }: Readonly<{ library: LibraryWithGroups }>) {
   const [pendingList, setPendingList] = useState<string | null>(null);
 
   // Cached/deduped by react-query across every row - only actually fetched once per page load.
-  const { data: roles } = useQueryHandler<Role[]>({
-    queryKey: 'roles',
-    endpoint: 'roles'
+  const { data: groups } = useQueryHandler<GroupDto[]>({
+    queryKey: 'groups',
+    endpoint: 'groups'
   });
 
   const { mutateAsync: addToList } = useMutationHandler({
     endpoint: 'libraries/membership',
     method: 'POST',
     mutationKey: 'library-membership-add',
-    invalidateQueryKeys: ['libraries-roles']
+    invalidateQueryKeys: ['libraries-groups', 'groups']
   });
 
   const { mutateAsync: removeFromList } = useMutationHandler({
     endpoint: 'libraries/membership',
     method: 'DELETE',
     mutationKey: 'library-membership-remove',
-    invalidateQueryKeys: ['libraries-roles']
+    invalidateQueryKeys: ['libraries-groups', 'groups']
   });
 
   const toggle = async (list: string, label: string, active: boolean) => {
@@ -42,7 +41,7 @@ function RolesCell({ library }: Readonly<{ library: LibraryWithRoles }>) {
       if (active) {
         await removeFromList({ id: library.id, list });
       } else {
-        await addToList({ id: library.id, name: library.name, list });
+        await addToList({ id: library.id, list });
       }
     } catch (err: any) {
       toast({
@@ -56,22 +55,13 @@ function RolesCell({ library }: Readonly<{ library: LibraryWithRoles }>) {
     }
   };
 
-  const badges = [
-    ...(roles ?? []).map((role) => ({
-      list: role.id,
-      label: role.name,
-      active: library.roles.includes(role.id),
-      activeClass: bgSuccess,
-      inactiveClass: bgDestructive
-    })),
-    {
-      list: 'EXCLUDED',
-      label: 'EXCLUDED',
-      active: library.excluded,
-      activeClass: 'bg-amber-600 hover:bg-amber-700 text-white',
-      inactiveClass: 'bg-transparent border border-input text-muted-foreground hover:bg-accent'
-    }
-  ];
+  const badges = (groups ?? []).map((group) => ({
+    list: group.id,
+    label: group.name,
+    active: library.groups.includes(group.id),
+    activeClass: bgSuccess,
+    inactiveClass: bgDestructive
+  }));
 
   return (
     <div className="flex flex-wrap gap-1">
@@ -95,7 +85,7 @@ function RolesCell({ library }: Readonly<{ library: LibraryWithRoles }>) {
   );
 }
 
-export const columns: ColumnDef<LibraryWithRoles>[] = [
+export const columns: ColumnDef<LibraryWithGroups>[] = [
   {
     accessorKey: 'name',
     meta: { justAFlag: true },
@@ -103,8 +93,8 @@ export const columns: ColumnDef<LibraryWithRoles>[] = [
     cell: ({ row }) => row.getValue('name')
   },
   {
-    id: 'roles',
-    header: 'Roles',
+    id: 'groups',
+    header: 'Access Groups',
     cell: ({ row }) => <RolesCell library={row.original} />
   }
 ];

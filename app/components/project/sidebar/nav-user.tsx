@@ -23,12 +23,11 @@ export function NavUser() {
   const { data: session } = useSession();
   const { isMobile } = useSidebar();
 
-  if (!session?.user?.JellyfinSession?.AccessToken) return null;
+  if (!session?.user) return null;
 
-  const SessionInfo = session.user.JellyfinSession.SessionInfo;
   const user = {
-    username: SessionInfo.UserName,
-    deviceName: SessionInfo.DeviceName
+    username: session.user.name ?? 'admin',
+    deviceName: 'Jellydash admin'
   };
 
   const appVersion = process.env.NEXT_PUBLIC_APP_VERSION || 'dev';

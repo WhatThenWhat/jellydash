@@ -1,119 +1,48 @@
 'use client';
 
-import { Role } from '@/app/db/packages';
 import { DataTable } from '@/components/breeze-ui/data-table/data-table';
-import { toast } from '@/components/breeze-ui/toast/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { useMutationHandler } from '@/hooks/useMutationHandler';
 import useQueryHandler from '@/hooks/useQueryHandler';
-import { Loader2, Plus } from 'lucide-react';
+import type { GroupDto } from '@/lib/shared/types';
+import { Plus } from 'lucide-react';
 import { useState } from 'react';
+import GroupDialog from './components/GroupDialog';
 import { columns } from './data-table/columns';
 
-export default function ManageUserRoles() {
+export default function ManageAccessGroups() {
   const [createOpen, setCreateOpen] = useState(false);
-  const [name, setName] = useState('');
 
-  const { data, isError, error, isPending } = useQueryHandler<Role[]>({
-    queryKey: 'roles',
-    endpoint: 'roles'
+  const { data, isError, error, isPending } = useQueryHandler<GroupDto[]>({
+    queryKey: 'groups',
+    endpoint: 'groups'
   });
-
-  const { mutateAsync: createRole, isPending: isCreating } = useMutationHandler({
-    endpoint: 'roles',
-    method: 'POST',
-    mutationKey: 'roles-create',
-    invalidateQueryKeys: ['roles']
-  });
-
-  const handleCreate = async () => {
-    try {
-      await createRole({ name });
-      toast({
-        title: 'Role created',
-        description: `${name} is ready - add libraries to it from the Sync page.`,
-        variant: 'success',
-        duration: 4000
-      });
-      setName('');
-      setCreateOpen(false);
-    } catch (err: any) {
-      toast({
-        title: 'Failed to create role',
-        description: err?.message ?? 'Could not create role',
-        variant: 'destructive',
-        duration: 4000
-      });
-    }
-  };
 
   if (isError) {
     console.error(error);
-    return <div>Error loading roles: {error.message}</div>;
+    return <div>Error loading access groups: {error.message}</div>;
   }
 
   return (
     <Card className="flex flex-col w-full gap-5 p-10">
       <CardHeader className="p-0 flex-row items-center justify-between">
         <div>
-          <CardTitle>Roles</CardTitle>
+          <CardTitle>Access Groups</CardTitle>
           <CardDescription>
-            Roles determine which libraries a user can access and, optionally, a max parental
-            rating. Manage library access per role from the Sync page.
+            Access groups belong to the selected server. A group sets libraries, a parental rating
+            cap, tags, downloads, Live TV and session limits for new users, including users invited
+            through Wizarr.
           </CardDescription>
         </div>
         <Button onClick={() => setCreateOpen(true)}>
           <Plus className="h-4 w-4 mr-2" />
-          New Role
+          New Access Group
         </Button>
       </CardHeader>
 
-      <DataTable
-        columns={columns}
-        data={data || []}
-        loading={isPending}
-        pagination
-        filterInput
-        loadingSkeletonHeight={400}
-      />
+      <DataTable columns={columns} data={data || []} loading={isPending} pagination filterInput loadingSkeletonHeight={400} />
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>New Role</DialogTitle>
-          </DialogHeader>
-
-          <Label htmlFor="new-role-name" className="flex flex-col gap-1">
-            Name
-            <Input
-              id="new-role-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={isCreating}
-              placeholder="e.g. Family"
-            />
-          </Label>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={isCreating}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreate} disabled={isCreating || !name.trim()}>
-              {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <GroupDialog open={createOpen} onOpenChange={setCreateOpen} />
     </Card>
   );
 }

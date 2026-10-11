@@ -1,102 +1,30 @@
-import { CreateUserPayloadType } from '@/app/(pages)/jd-admin/users/create/formValidations';
-import { catchError, generatePassword, requestApi } from '@/app/api/helpers';
-import { CreateUserResponseType, User } from '@/app/api/types';
-import { getRolePolicy, getRoles } from '@/app/db/packages';
-import { NextRequest, NextResponse } from 'next/server';
-import { mobileDisplayPrefs } from '../../constants';
-import { updateUserDisplayPreferences } from '../helpers';
+import { applyNewUserPrefs } from '@/lib/core/prefs';
+import { jsonBody, route, selectedServer } from '@/lib/server/http';
+import type { CreateUserResponse } from '@/lib/shared/types';
+import { ValidationError } from '@/lib/core/errors';
+import { requireId } from '@/lib/core/validate';
+import { NextResponse } from 'next/server';
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { Username, Pw } = body as CreateUserPayloadType;
-    const Package: string = body.Package;
+const SUBTITLE_LANGUAGE = process.env.DEFAULT_SUBTITLE_LANGUAGE?.trim() || 'eng';
 
-    const role = getRoles().find((r) => r.id === Package);
+export const POST = route(async (request) => {
+  const { svc, server } = selectedServer(request);
+  const body = await jsonBody(request);
+  if (typeof body.Username !== 'string') throw new ValidationError('Username is required');
+  const groupId = requireId(body.Package, 'Access group');
+  const group = svc.store.getGroup(groupId);
 
-    if (!role) {
-      return NextResponse.json({ message: `Access Group does not exist` }, { status: 400 });
+  let warnings: string[] = [];
+  const { user, password } = await svc.createUser({
+    serverId: server.id,
+    groupId,
+    username: body.Username,
+    password: typeof body.Pw === 'string' ? body.Pw : undefined,
+    afterCreate: async (client, created) => {
+      warnings = await applyNewUserPrefs(client, created.Id, group.library_ids, SUBTITLE_LANGUAGE);
     }
+  });
 
-    const endpoints = {
-      create: '/Users/New',
-      userList: '/Users',
-      remove: `/Users`
-    };
-
-    // Check if user exists
-    const getUsersResponse = await requestApi(endpoints.userList, request, {
-      method: 'GET',
-      requiresAuth: true
-    });
-    const users: User[] = await getUsersResponse.json();
-
-    if (users.some((user) => user.Name === Username)) {
-      return NextResponse.json({ message: `User already exists` }, { status: 400 });
-    }
-
-    // Create user
-    const createResponse = await requestApi(endpoints.create, request, {
-      method: 'POST',
-      requiresAuth: true,
-      body: { Name: Username }
-    });
-
-    if (!createResponse.ok) {
-      return NextResponse.json({ message: `Error creating user` }, { status: 400 });
-    }
-
-    const updatedUsers: User[] = await (
-      await requestApi(endpoints.userList, request, { method: 'GET', requiresAuth: true })
-    ).json();
-    const newUser = updatedUsers.find((u) => u.Name === Username);
-
-    if (!newUser) {
-      return NextResponse.json({ message: `Could not find newly created user` }, { status: 400 });
-    }
-
-    const userInfo: User = { ...newUser, ...getRolePolicy(role) };
-
-    // Update policies
-    const policyUpdate = await requestApi(`/Users/${newUser.Id}/Policy`, request, {
-      method: 'POST',
-      requiresAuth: true,
-      body: JSON.stringify(userInfo)
-    });
-
-    if (!policyUpdate.ok) {
-      return NextResponse.json({ message: `Error updating user policies` }, { status: 400 });
-    }
-
-    // Set password
-    const newPassword = Pw?.length ? Pw : generatePassword();
-    const passwordUpdate = await requestApi(`/Users/${newUser.Id}/Password`, request, {
-      method: 'POST',
-      requiresAuth: true,
-      body: { CurrentPw: '', NewPw: newPassword }
-    });
-
-    if (!passwordUpdate.ok) {
-      return NextResponse.json({ message: `Error setting password` }, { status: 400 });
-    }
-
-    // ✅ Call the helper function directly
-    const prefsUpdate = await updateUserDisplayPreferences(mobileDisplayPrefs, request);
-
-    if (!prefsUpdate.ok) {
-      // Cleanup if display preferences fail
-      await requestApi(`${endpoints.remove}/${newUser.Id}`, request, {
-        method: 'DELETE',
-        requiresAuth: true
-      });
-
-      return NextResponse.json({ message: `Error updating display preferences` }, { status: 400 });
-    }
-
-    return NextResponse.json({ User: userInfo, Pw: newPassword } as CreateUserResponseType, {
-      status: 200
-    });
-  } catch (error) {
-    return catchError(error);
-  }
-}
+  const res: CreateUserResponse = { User: { Id: user.Id, Name: user.Name }, Pw: password, warnings };
+  return NextResponse.json(res, { status: 200 });
+});

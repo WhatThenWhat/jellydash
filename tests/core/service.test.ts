@@ -159,3 +159,35 @@ describe('groups', () => {
     assert.deepEqual(svc.store.getGroup(groupId).library_ids, []);
   });
 });
+
+describe('ratings and group edits', () => {
+  it('manages the rating list with unique ids', () => {
+    const a = svc.store.createRating('M/16', 'M/16');
+    const b = svc.store.createRating('M/16', 'M/16 alt');
+    assert.notEqual(a.id, b.id);
+    assert.equal(svc.store.updateRating(a.id, 'PG', undefined).value, 'M/16');
+    svc.store.deleteRating(b.id);
+    assert.equal(svc.store.listRatings().length, 1);
+    assert.throws(() => svc.store.updateRating('nope', 'x', 'y'), /not found/);
+  });
+
+  it('updates a group without touching existing members', async () => {
+    const { user } = await svc.createUser({ serverId, groupId, username: 'member' });
+    const before = JSON.stringify(fake.users.get(user.Id)!.Policy);
+    svc.store.updateGroup(groupId, { max_rating: 7, library_ids: [] });
+    assert.equal(JSON.stringify(fake.users.get(user.Id)!.Policy), before);
+    assert.equal(svc.store.getGroup(groupId).max_rating, 7);
+    assert.deepEqual(svc.store.getGroup(groupId).library_ids, []);
+  });
+
+  it('re-applies a group to an existing member on request', async () => {
+    const { user } = await svc.createUser({ serverId, groupId, username: 'again' });
+    svc.store.updateGroup(groupId, { max_rating: 7 });
+    await svc.applyGroupToUser(serverId, groupId, user.Id);
+    assert.equal(fake.users.get(user.Id)!.Policy.MaxParentalRating, 7);
+  });
+
+  it('rejects duplicate group names per server', () => {
+    assert.throws(() => svc.store.createGroup(serverId, { name: 'Kids', library_ids: [] }), /already exists/);
+  });
+});

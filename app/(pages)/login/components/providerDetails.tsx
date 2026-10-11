@@ -42,7 +42,7 @@ export const providerDetails: Record<
     background: 'bg-emerald-600'
   },
   jellyfin: {
-    label: 'Sign in with Jellyfin',
+    label: 'Sign in',
     icon: <SiJellyfin />,
     background: 'bg-indigo-600'
   }

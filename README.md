@@ -1,200 +1,64 @@
-# 🎬 **Jellydash** – A Jellyfin Management Dashboard
+# Jellydash (multi-server)
 
-**Jellydash** is a self-hosted web dashboard that **enhances and simplifies** the management of your Jellyfin server, filling the gaps left by the default Jellyfin dashboard.
+A web dashboard for managing one or more Jellyfin servers from a single instance, with **access groups** that Wizarr can apply when an invited user activates their account.
 
-It ships as a full Next.js web app — log in with your existing Jellyfin admin account and manage users, libraries, and content straight from the browser. No separate accounts, no external database.
+This is a fork of [developed-by-will/jellydash](https://github.com/developed-by-will/jellydash) (MIT). Original work: Will. Changes here: multi-server support, per-server access groups, encrypted API-key storage, local admin login, an internal API for Wizarr, and removal of music, social-post and home-reorder features.
 
----
+## What it does
 
-## ❓ **Why Jellydash?**
+- **Servers**: register any number of Jellyfin servers by external https URL and a dedicated API key. Switch with the selector in the header.
+- **Access groups** (per server): libraries, maximum parental rating, blocked and allowed tags, downloads, Live TV, max sessions.
+- **Users**: searchable table, per-user rating cap, enable/disable, remove, can-download.
+- **Create user**: creates the user with one merged policy write from the chosen group, sets the password, applies subtitle and home layout defaults to that user only. If any step fails, the new user is deleted.
+- **Libraries**: sync from Jellyfin, assign libraries to groups.
+- **Manage Ratings**: the list of ratings offered in pickers.
+- **Wizarr integration**: a Wizarr fork reads groups from this app so each invite can place the new user in a group on each server. See [docs/internal-api.md](docs/internal-api.md).
 
-Jellyfin's default dashboard lacks several key features for **granular control**, such as:
+Rate Content and Watchlist Settings (polling) are being ported to multi-server and arrive in a later release.
 
-- **No built-in user role system** (e.g., "Children," "Adults," "Admins").
-- **Ratting content** Ratting content must be done one-by-one.
-- **Lack of Watchlist feature** Users are forced to look for the Favorite filter on each client which can be cumbersome e.g. TV Client.
+## Install
 
-And more.
+You need Docker and a reverse proxy that terminates TLS (Synology DSM reverse proxy, Caddy, Traefik, nginx).
 
-With **Jellydash**, you regain control — **without needing external databases** (everything is stored locally in the project folder).
+1. Copy `.env.example` to `.env` and fill it in. Generate secrets with `openssl rand -base64 32`.
+2. Create the admin password hash:
 
----
+   ```
+   docker run --rm -it ghcr.io/whatthenwhat/jellydash-multi node scripts/hash-password.mjs
+   ```
 
-## ✨ **Key Features**
+   Put the printed value in `ADMIN_PASSWORD_HASH`. In a compose `.env` file, write each `$` as `$$`.
+3. Start it:
 
-### 🔹 **User Management**
+   ```
+   docker compose up -d
+   ```
 
-- **Browse and manage users** in a searchable table, with a per-user **Max Parental Rating**, **Disable User**, **Remove User** and **Can Download** options.
-  ![alt text](./public/image.png)
-- **Create new users** with an **Access Group** that controls which libraries and permissions they get, plus an auto-generated secure password.
-  ![alt text](./public/image-1.png)
-- **Roles** – Create, rename, or delete roles. Each role can optionally have a **Max Parental Rating** cap.
-  ![alt text](./public/image-3.png)
+   The container listens on port 4000 and is bound to `127.0.0.1` in the sample compose file. Point your reverse proxy at it and set `PUBLIC_BASE_URL` to the proxy's https address.
+4. Sign in, open **Servers**, add each Jellyfin server (external https URL and a dedicated API key), then **Libraries > Sync**, then create access groups.
 
-### 🔹 **Content Management**
+Data lives in `/data` (SQLite). Back up that folder and keep `MASTER_KEY`: it decrypts the stored API keys.
 
-- **Parental Ratings** – parent menu with two pages:
-  - **Rate Content** – Paginated grid of every Movie/Show, letting you fix wrong titles, posters, and official ratings in bulk.
-    ![alt text](./public/image-4.png)
-  - **Manage Ratings** – Add, rename, or remove the ratings offered on the Rate Content page.
-    ![alt text](./public/image-5.png)
-- **Watchlist Settings** – Setup and manage the Watchlist feature for you and your users!
-  ![alt text](./public/image-7.png)
-- **Social Post** – Shareable social-media poster with custom template option.
-  ![alt text](./public/image-8.png)
-- **Sync Crew & Cast** – Refreshes cast/crew photos that are missing from Jellyfin. Tracks what's already been processed so re-runs only touch what's still missing, or force a full re-sync.
+## Security notes
 
-### 🔹 **Libraries**
+- Jellyfin API keys are encrypted at rest with AES-256-GCM using `MASTER_KEY`. Use one dedicated key per app per server so a key can be revoked on its own.
+- TLS verification is always on. For a private CA, mount the CA file and set `EXTRA_CA_FILE`.
+- Server URLs must be https unless `ALLOW_INSECURE_HTTP=true`.
+- Login is a single local admin account (scrypt hash). Five failed attempts per username lock that username for 15 minutes. Restrict the admin address at your reverse proxy (LAN only is recommended).
+- State-changing requests are checked against `PUBLIC_BASE_URL` (CSRF).
+- Do not publish `/api/internal/` through the proxy.
+- The app never grants administrator rights or all-library access through access groups.
 
-- **Sync** – Table of every library Jellyfin reports, with a badge per role (plus an `EXCLUDED` badge) — click a badge to grant or revoke that library for that role on the spot.
-  ![alt text](./public/image-9.png)
-- **Reorder Home** – Drag-and-drop the home screen's library order, exclude/restore libraries from the same list, and push the new order to every user. The Playlists tile is shown pinned first since Jellyfin forces that position regardless.
-- **Add Library to Role** – Pick a role, then check off which libraries it can access.
-
----
-
-## 🚀 **Getting Started**
-
-1. **Install dependencies**:
-
-```bash
-npm install
-```
-
-2. **Configure your `.env`** (see the **Environment Variables** section below).
-
-3. **Run** (the dev server runs on **port 4000**, not 3000):
-
-```bash
-npm run dev
-```
-
-4. Open `http://localhost:4000/login` and sign in with your **Jellyfin admin username and password** — Jellydash authenticates you directly against your Jellyfin server, so there's no separate account to create.
-
----
-
-## 🐳 **Run with Docker**
-
-1. Copy `.env.example` to `.env` and fill in the values (see **Environment Variables** below).
-2. Build and start:
-
-```bash
-docker compose up -d --build
-```
-
-3. Open `http://<docker-host>:4000/login` and sign in with your Jellyfin admin account.
-
-Settings, roles, ratings and watchlist data live in the `jellydash-data` volume (mounted at `/app/app/db`), so they survive rebuilds. The `NEXT_PUBLIC_*` values are baked in at build time; after changing them, rebuild with `docker compose up -d --build`.
-
----
-
-## 🔧 **Environment Variables**
-
-```env
-# Your actual Jellyfin server
-SERVER_URL={YOUR_JELLYFIN_SERVER_URL}
-
-# NextAuth (Jellydash's own login session)
-NEXTAUTH_SECRET={RANDOM_SECRET}
-NEXTAUTH_URL={YOUR_JELLYDASH_APP_URL}
-NEXT_SERVER_ACTIONS_ENCRYPTION_KEY={RANDOM_SECRET}
-
-# Admin API key used for server-side/webhook calls to Jellyfin
-JELLYFIN_ADMIN_API_KEY={YOUR_JELLYFIN_API_KEY}
-
-# Shared secret required on incoming Jellyfin webhook calls
-WEBHOOK_SECRET={RANDOM_SECRET}
-
-# Optional debugging
-REQUEST_LOGS=true
-DEBUG_JELLYFIN_ENDPOINT=/api/webhooks
-
-# Poster image hosting (used to build public image URLs)
-NEXT_PUBLIC_IMAGE_PROTOCOL=https
-NEXT_PUBLIC_IMAGE_HOSTNAME={YOUR_JELLYFIN_HOSTNAME}
-NEXT_PUBLIC_ALLOWED_DEV_ORIGIN={YOUR_DEV_ORIGIN}
-
-# Path to the Movies watch list
-WATCHLIST_MOVIES_POSTER_PATH={PATH_TO_POSTER}
-WATCHLIST_MOVIES_THUMB_PATH={PATH_TO_THUMBNAIL}
-```
-
-The Watchlist playlist's name/poster and the "Playlists" tile's name/thumbnail are **not** env vars - they're managed from **Content Management → Watchlist Settings** (see below).
-
-## 🔐 **Authentication**
-
-Signing with an account that has admin permissions, that's all!
-
----
-
-### 📚 **Library Sync**
-
-## Shows every library Jellyfin currently reports in a table (Library, Roles).
-
-### 👤 **Roles**
-
-Lists every role from `app/db/roles.json`:
-
-- **New Role** – creates a role with an empty library file; grant it libraries from the Sync page afterward.
-- **Edit Role** – rename it and/or set a Max Parental Rating, picked from the same list managed on **Parental Ratings → Manage Ratings** (or "No cap"). The role's `id` (and its underlying library file) never changes, even if you rename it.
-- **Delete Role** – removes the role and its library file. Existing users keep whatever permissions they already have.
-
----
-
-### 🎬 **Watchlist Settings**
-
-Available under **Content Management → Watchlist Settings**. Controls two things:
-
-- The **auto-generated Watchlist playlist** every user gets when they favorite a Movie/Video - its name and primary image.
-- The shared **"Playlists"** home-screen tile - its name and thumbnail.
-
-Saving applies immediately to every playlist/view that already exists, not just future ones.
-
-**First-time setup wizard**: the first time you open this page (or any time via the "Run setup again" link), a 4-step wizard walks through everything needed instead of doing it by hand:
-
-1. Explains what the feature does.
-2. Confirms Jellydash can reach your Jellyfin server, then installs the Webhook plugin from Jellyfin's official catalog.
-3. Restarts Jellyfin (required for a freshly-installed plugin to activate) and confirms the server is back up.
-4. Applies the two Generic Destinations described below (auto-generating and embedding the shared secret - nothing to copy/paste), lets you double check they're there, and can create the Watchlist playlist for every user right away.
-
-The wizard only ever adds/replaces its own two destinations - any other webhook destinations you've already configured (Discord, Slack, etc.) are left alone. Everything it does can also still be set up by hand:
-
-A Jellyfin webhook (notification type `UserDataSaved`) listens for favorites and adds them to the right watchlist playlist automatically; a one-off backfill endpoint (`/api/webhooks/jellyfin-favorite/backfill`) exists to catch up on favorites that existed before the webhook was wired up.
-
-Jellyfin's own library scan periodically regenerates these images (and can reset the "Playlists" tile's name) on its own - there's no way to stop that from happening, so a second webhook exists to put things back right after: in Jellyfin's Webhook plugin, add a **Generic Destination** with notification type **Task Completed** (scope it to just "Scan Media Library" if the plugin lets you), pointed at:
+## Development
 
 ```
-{APP_URL}/api/webhooks/jellyfin-task-completed?secret={WEBHOOK_SECRET}
+npm ci
+npm run dev        # http://localhost:4000
+npm test           # core logic, uses Node's built-in test runner and a fake Jellyfin
 ```
 
-If `WEBHOOK_SECRET` isn't set in `.env`, one is generated automatically and stored in `app/db/webhook-secret.json` the first time it's needed (by the wizard, or by either webhook route).
+Requires Node 22.13 or newer (`node:sqlite`).
 
----
+## License
 
-## ⚠️ **Critical Notes**
-
-- **Dev server runs on port 4000**, not the Next.js default 3000.
-- **Access Groups/Roles**: Each has its own independent library file under `app/db/libraries/` — granting a library to one role has no effect on the others. Roles themselves live in `app/db/roles.json`, managed from **User Management → Roles**.
-- **Ratings**: The list offered on the Rate Content page lives in `app/db/ratings.json`, managed from **Parental Ratings → Manage Ratings**. Deleting a rating doesn't change items already tagged with it in Jellyfin.
-- **Watchlist**: Names live in `app/db/watchlist-settings.json`, images in `public/watchlist-*-image.png` - both managed from **Content Management → Watchlist Settings**.
-- **First-run delays**: media/photo updates may take time (later calls are faster, since processed IDs are skipped).
-- **Homepage Order**: lives in `app/db/ordered-views`, managed from **Libraries → Reorder Home**. Playlists always shows first.
-- **Sync Crew & Cast**: already-processed people are tracked in `app/db/faceless`, so re-runs only touch what's still missing an image. Use Force to redo everyone.
-
----
-
-## 🔮 **Planned Features**
-
-- **Nothing planned for now**
-- **Suggest a feature!** (Open an issue or DM me.)
-
----
-
-## 💡 **Good to Know**
-
-- **No database required** – All data is stored as files in the project folder (`app/db/`).
-- **Works alongside Jellyfin** – No conflicts with your existing setup; Jellydash just talks to Jellyfin's API.
-
----
-
-**🌟 Love Jellydash?** Star the repo and help it grow!
+MIT. See [LICENSE](LICENSE).

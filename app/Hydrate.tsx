@@ -1,47 +1,23 @@
 'use client';
 
-import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
-import { QueryClient } from '@tanstack/react-query';
-import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { ServerProvider } from '@/hooks/useServer';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SessionProvider } from 'next-auth/react';
-import localFont from 'next/font/local';
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, useState } from 'react';
 
-export const aristaFont = localFont({
-  src: '../public/Arista-Pro-Alternate-Light.ttf',
-  display: 'swap'
-});
-
+// Query results are kept in memory only. Nothing about users or servers is persisted in the browser.
 export default function Hydrate({ children }: Readonly<{ children: React.ReactNode }>) {
-  const [isHydrated, setIsHydrated] = useState(false);
-  const [localStorageInit, setLocalStorageInit] = useState<Storage>();
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        refetchOnWindowFocus: false
-      }
-    }
-  });
-
-  useEffect(() => {
-    setIsHydrated(true);
-    setLocalStorageInit(window.localStorage);
-  }, []);
+  const [queryClient] = useState(
+    () => new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1 } } })
+  );
 
   return (
     <StrictMode>
-      {isHydrated && (
-        <PersistQueryClientProvider
-          client={queryClient}
-          persistOptions={{
-            persister: createAsyncStoragePersister({
-              storage: localStorageInit
-            })
-          }}
-        >
-          <SessionProvider>{children}</SessionProvider>
-        </PersistQueryClientProvider>
-      )}
+      <QueryClientProvider client={queryClient}>
+        <SessionProvider>
+          <ServerProvider>{children}</ServerProvider>
+        </SessionProvider>
+      </QueryClientProvider>
     </StrictMode>
   );
 }

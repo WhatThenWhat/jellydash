@@ -1,4 +1,4 @@
-import { Role } from '@/app/db/packages';
+import type { GroupDto } from '@/lib/shared/types';
 import { Badge } from '@/components/ui/badge';
 import { FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
@@ -22,9 +22,9 @@ type Props = {
 export default function FormFields(props: Readonly<Props>) {
   const { control, isPending } = props;
 
-  const { data: roles } = useQueryHandler<Role[]>({
-    queryKey: 'roles',
-    endpoint: 'roles'
+  const { data: groups } = useQueryHandler<GroupDto[]>({
+    queryKey: 'groups',
+    endpoint: 'groups'
   });
 
   return (
@@ -91,9 +91,9 @@ export default function FormFields(props: Readonly<Props>) {
                   <SelectContent>
                     <SelectGroup>
                       <SelectLabel>Access Groups</SelectLabel>
-                      {(roles ?? []).map((role) => (
-                        <SelectItem key={role.id} value={role.id} className="cursor-pointer">
-                          {role.name}
+                      {(groups ?? []).map((group) => (
+                        <SelectItem key={group.id} value={group.id} className="cursor-pointer">
+                          {group.name}
                         </SelectItem>
                       ))}
                     </SelectGroup>

@@ -8,10 +8,6 @@ export const formValidationRules = z.object({
   Pw: z
     .string()
     .min(1, { message: 'Password is required' })
-    .min(8, { message: 'At least 8 characters' })
 });
 
 export type LoginPayloadType = z.infer<typeof formValidationRules>;
-export type LoginResponseType = {
-  AccessToken: string;
-};
