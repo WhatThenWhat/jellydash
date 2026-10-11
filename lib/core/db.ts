@@ -66,6 +66,48 @@ const MIGRATIONS: string[] = [
     value TEXT NOT NULL,
     position INTEGER NOT NULL
   );
+  `,
+  // v3: watchlist (favorites to playlists), per server
+  `
+  CREATE TABLE watchlist_settings (
+    server_id TEXT PRIMARY KEY REFERENCES servers(id) ON DELETE CASCADE,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    movies_name TEXT NOT NULL DEFAULT 'Watchlist',
+    view_name TEXT NOT NULL DEFAULT 'Playlists',
+    updated_at TEXT NOT NULL
+  );
+  CREATE TABLE watchlist_images (
+    server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    slot TEXT NOT NULL CHECK (slot IN ('movies', 'view')),
+    content_type TEXT NOT NULL,
+    bytes BLOB NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (server_id, slot)
+  );
+  CREATE TABLE watchlist_playlists (
+    server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    jf_user_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('movies', 'series')),
+    series_id TEXT NOT NULL DEFAULT '',
+    playlist_id TEXT NOT NULL,
+    PRIMARY KEY (server_id, jf_user_id, kind, series_id)
+  );
+  CREATE TABLE watchlist_seen (
+    server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    jf_user_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    item_type TEXT NOT NULL,
+    series_id TEXT,
+    series_name TEXT,
+    PRIMARY KEY (server_id, jf_user_id, item_id)
+  );
+  CREATE TABLE watchlist_runs (
+    server_id TEXT PRIMARY KEY REFERENCES servers(id) ON DELETE CASCADE,
+    last_run_at TEXT,
+    last_ok INTEGER,
+    last_error TEXT,
+    last_summary TEXT
+  );
   `
 ];
 

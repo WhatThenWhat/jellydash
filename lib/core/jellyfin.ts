@@ -50,7 +50,7 @@ export class JellyfinClient {
   }
 
   /** Low-level request. GET retries on network errors and 5xx. Writes are never retried. */
-  async request(method: string, path: string, body?: unknown): Promise<Response> {
+  async request(method: string, path: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<Response> {
     const url = this.baseUrl + path;
     const attempts = method === 'GET' ? this.retries + 1 : 1;
     let lastError: JellyfinError | undefined;
@@ -58,7 +58,7 @@ export class JellyfinClient {
       try {
         const res = await this.fetchImpl(url, {
           method,
-          headers: this.headers(),
+          headers: { ...this.headers(), ...extraHeaders },
           body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body),
           redirect: 'manual',
           signal: AbortSignal.timeout(this.timeoutMs)
@@ -101,6 +101,38 @@ export class JellyfinClient {
   private async none(method: string, path: string, body?: unknown): Promise<void> {
     const res = await this.request(method, path, body);
     if (!res.ok) throw new JellyfinError('http', `Jellyfin returned HTTP ${res.status} for ${method} ${path.split('?')[0]}`, res.status);
+  }
+
+  /** Generic JSON GET. Callers pass a path that is already encoded. */
+  get<T>(path: string) {
+    return this.json<T>('GET', path);
+  }
+
+  post<T = void>(path: string, body?: unknown) {
+    return this.json<T>('POST', path, body);
+  }
+
+  remove(path: string) {
+    return this.none('DELETE', path);
+  }
+
+  /** Download an item image. Returns null when the item has no such image. */
+  async fetchImage(itemId: string, imageType: string, query = ''): Promise<{ bytes: Uint8Array; contentType: string } | null> {
+    const res = await this.request('GET', `/Items/${encodeURIComponent(itemId)}/Images/${encodeURIComponent(imageType)}${query}`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new JellyfinError('http', `Jellyfin returned HTTP ${res.status} for an image`, res.status);
+    return { bytes: new Uint8Array(await res.arrayBuffer()), contentType: res.headers.get('content-type') ?? 'image/jpeg' };
+  }
+
+  /** Jellyfin base64-decodes the body of an image upload regardless of Content-Type. */
+  async uploadImage(itemId: string, imageType: string, bytes: Uint8Array, contentType: string): Promise<void> {
+    const res = await this.request(
+      'POST',
+      `/Items/${encodeURIComponent(itemId)}/Images/${encodeURIComponent(imageType)}`,
+      Buffer.from(bytes).toString('base64'),
+      { 'Content-Type': contentType }
+    );
+    if (!res.ok) throw new JellyfinError('http', `Jellyfin returned HTTP ${res.status} for an image upload`, res.status);
   }
 
   publicInfo() {
