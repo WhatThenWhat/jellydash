@@ -5,16 +5,19 @@ import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useMutationHandler } from '@/hooks/useMutationHandler';
+import { patchInChunks } from '@/hooks/patchInChunks';
+import { useServer } from '@/hooks/useServer';
+import { useQueryClient } from '@tanstack/react-query';
 import useQueryHandler from '@/hooks/useQueryHandler';
 import { Search, X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Rating } from '@/lib/shared/ratings';
 import Items, { NO_RATING, type RatingItem } from './components/Items';
 import { PaginationItems } from './components/Pagination';
+import { SaveBar, useUnsavedWarning } from './components/SaveBar';
 
-const PAGE_SIZE = 18;
+const PAGE_SIZE = 36;
 
 type RatingPage = {
   Items: RatingItem[];
@@ -24,8 +27,6 @@ type RatingPage = {
   Page: number;
   TotalPages: number;
 };
-
-type UpdateResult = { updated: number; failed: Array<{ id: string; error: string }> };
 
 export default function ParentalRatings() {
   const [page, setPage] = useState(0);
@@ -46,57 +47,81 @@ export default function ParentalRatings() {
     endpoint
   });
 
-  const { mutateAsync: updateRatings, isPending: isUpdating } = useMutationHandler<
-    Array<{ ItemId: string; Rating: string }>,
-    UpdateResult
-  >({
-    endpoint: 'items/update-ratings',
-    method: 'PATCH',
-    mutationKey: 'update-ratings',
-    invalidateQueryKeys: ['official-ratings']
-  });
+  const queryClient = useQueryClient();
+  const { selectedId } = useServer();
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [progress, setProgress] = useState('');
+
+  // Edits belong to one server's items; drop them if the selected server changes.
+  useEffect(() => {
+    setRatings({});
+  }, [selectedId]);
+
+  const count = Object.keys(ratings).length;
+  useUnsavedWarning(count);
 
   const changePage = (next: number) => {
     setPage(next);
-    setRatings({});
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const runSearch = () => {
     setQuery(text.trim());
     setPage(0);
-    setRatings({});
   };
 
   const clearSearch = () => {
     setText('');
     setQuery('');
     setPage(0);
-    setRatings({});
+  };
+
+  const serverValueOf = (item: RatingItem) => {
+    const current = item.OfficialRating?.trim();
+    if (!current) return NO_RATING;
+    return (choices ?? []).find((r) => r.value.trim().toUpperCase() === current.toUpperCase())?.value ?? '__other__';
+  };
+
+  // Keep an edit only while it differs from what the server has.
+  const setRating = (id: string, value: string) => {
+    const item = data?.Items.find((i) => i.Id === id);
+    setRatings((prev) => {
+      const next = { ...prev };
+      if (item && serverValueOf(item) === value) delete next[id];
+      else next[id] = value;
+      return next;
+    });
   };
 
   const save = async () => {
     const updates = Object.entries(ratings).map(([ItemId, Rating]) => ({ ItemId, Rating: Rating === NO_RATING ? '' : Rating }));
     if (updates.length === 0) return;
 
+    setIsUpdating(true);
+    setProgress('');
     try {
-      const result = await updateRatings(updates);
-      if (result.failed.length === 0) {
+      const result = await patchInChunks('items/update-ratings', updates, 25, (done, total) =>
+        setProgress(`Saving ${done} of ${total}...`)
+      );
+      // One refresh after everything is written, not one per batch.
+      await queryClient.invalidateQueries({ queryKey: ['official-ratings'] });
+      const keep = new Set([...result.failed.map((f) => f.id), ...result.notAttempted]);
+      setRatings((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => keep.has(id))));
+      if (keep.size === 0) {
         toast({ title: 'Saved', description: `${result.updated} rating(s) updated.`, variant: 'success', duration: 3000 });
-        setRatings({});
       } else {
-        // Keep the failed ones selected so a second Save retries only those.
-        const failedIds = new Set(result.failed.map((f) => f.id));
-        setRatings((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => failedIds.has(id))));
         toast({
-          title: `${result.failed.length} item(s) failed`,
-          description: `${result.updated} updated. ${result.failed[0].error}`,
+          title: `${keep.size} edit(s) not saved`,
+          description: `${result.updated} updated. ${result.stoppedBecause ?? result.failed[0]?.error ?? ''} They stay pending; click Save to retry.`,
           variant: 'destructive',
-          duration: 6000
+          duration: 8000
         });
       }
     } catch (err: any) {
       toast({ title: 'Failed to save', description: err?.message ?? 'Could not update ratings', variant: 'destructive', duration: 5000 });
+    } finally {
+      setIsUpdating(false);
+      setProgress('');
     }
   };
 
@@ -135,7 +160,6 @@ export default function ParentalRatings() {
           onValueChange={(v) => {
             setFilter(v);
             setPage(0);
-            setRatings({});
           }}
         >
           <SelectTrigger className="w-[220px]" aria-label="Filter by rating">
@@ -177,8 +201,6 @@ export default function ParentalRatings() {
     );
   }
 
-  const pending = Object.keys(ratings).length;
-
   return (
     <Card className="flex flex-col w-full gap-10 p-10">
       {header}
@@ -190,7 +212,7 @@ export default function ParentalRatings() {
           <CardDescription>
             {data.TotalRecordCount} title(s): {data.MovieCount} movies, {data.SeriesCount} shows.
           </CardDescription>
-          <Items items={data.Items} ratings={ratings} onRatingChange={(id, v) => setRatings((prev) => ({ ...prev, [id]: v }))} />
+          <Items items={data.Items} ratings={ratings} onRatingChange={setRating} />
 
           <PaginationItems
             currentPage={page}
@@ -200,9 +222,7 @@ export default function ParentalRatings() {
             disabled={isUpdating || isFetching}
           />
 
-          <Button className="self-end px-10" onClick={save} disabled={isUpdating || pending === 0}>
-            {isUpdating ? 'Saving...' : pending > 0 ? `Save (${pending})` : 'Save'}
-          </Button>
+          <SaveBar count={count} saving={isUpdating} progress={progress} onSave={save} onDiscard={() => setRatings({})} />
         </>
       )}
     </Card>

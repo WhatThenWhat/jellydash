@@ -6,19 +6,21 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/ca
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useMutationHandler } from '@/hooks/useMutationHandler';
+import { patchInChunks } from '@/hooks/patchInChunks';
+import { useServer } from '@/hooks/useServer';
+import { useQueryClient } from '@tanstack/react-query';
 import useQueryHandler from '@/hooks/useQueryHandler';
 import { Search, X } from 'lucide-react';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import ImageWithSkeleton from '../parental-ratings/components/ImageWithSkeleton';
 import { PaginationItems } from '../parental-ratings/components/Pagination';
+import { SaveBar, useUnsavedWarning } from '../parental-ratings/components/SaveBar';
 
-const PAGE_SIZE = 18;
+const PAGE_SIZE = 36;
 
 type TagItem = { Id: string; Name: string; Type: string; Tags: string[] };
 type TagPage = { Items: TagItem[]; TotalRecordCount: number; MovieCount: number; SeriesCount: number };
-type UpdateResult = { updated: number; unchanged: number; failed: Array<{ id: string; error: string }> };
 
 // Desired state per item: tag -> should the item carry it. Only entries that differ from the server are kept.
 type Pending = Record<string, Record<string, boolean>>;
@@ -45,32 +47,32 @@ export default function TagContent() {
     endpoint
   });
 
-  const { mutateAsync: updateTags, isPending: isUpdating } = useMutationHandler<
-    Array<{ ItemId: string; Add: string[]; Remove: string[] }>,
-    UpdateResult
-  >({
-    endpoint: 'items/update-tags',
-    method: 'PATCH',
-    mutationKey: 'update-tags',
-    invalidateQueryKeys: ['item-tags']
-  });
+  const queryClient = useQueryClient();
+  const { selectedId } = useServer();
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [progress, setProgress] = useState('');
+
+  // Edits belong to one server's items; drop them if the selected server changes.
+  useEffect(() => {
+    setPending({});
+  }, [selectedId]);
+
+  const count = Object.keys(pending).length;
+  useUnsavedWarning(count);
 
   const reset = () => setPending({});
   const changePage = (next: number) => {
     setPage(next);
-    reset();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
   const runSearch = () => {
     setQuery(text.trim());
     setPage(0);
-    reset();
   };
   const clearSearch = () => {
     setText('');
     setQuery('');
     setPage(0);
-    reset();
   };
 
   const has = (item: TagItem, tag: string) => pending[item.Id]?.[tag] ?? item.Tags.map((t) => t.toLowerCase()).includes(tag);
@@ -96,24 +98,31 @@ export default function TagContent() {
       Remove: Object.entries(want).filter(([, v]) => !v).map(([t]) => t)
     }));
     if (updates.length === 0) return;
+    setIsUpdating(true);
+    setProgress('');
     try {
-      const result = await updateTags(updates);
-      if (result.failed.length === 0) {
+      const result = await patchInChunks('items/update-tags', updates, 25, (done, total) =>
+        setProgress(`Saving ${done} of ${total}...`)
+      );
+      // One refresh after everything is written, not one per batch.
+      await queryClient.invalidateQueries({ queryKey: ['item-tags'] });
+      const keep = new Set([...result.failed.map((f) => f.id), ...result.notAttempted]);
+      setPending((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => keep.has(id))));
+      if (keep.size === 0) {
         toast({ title: 'Saved', description: `${result.updated} title(s) updated.`, variant: 'success', duration: 3000 });
-        reset();
       } else {
-        // Keep the failed ones pending so a second Save retries only those.
-        const failedIds = new Set(result.failed.map((f) => f.id));
-        setPending((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => failedIds.has(id))));
         toast({
-          title: `${result.failed.length} title(s) failed`,
-          description: `${result.updated} updated. ${result.failed[0].error}`,
+          title: `${keep.size} edit(s) not saved`,
+          description: `${result.updated} updated. ${result.stoppedBecause ?? result.failed[0]?.error ?? ''} They stay pending; click Save to retry.`,
           variant: 'destructive',
           duration: 8000
         });
       }
     } catch (err: any) {
       toast({ title: 'Failed to save', description: err?.message ?? 'Could not update tags', variant: 'destructive', duration: 5000 });
+    } finally {
+      setIsUpdating(false);
+      setProgress('');
     }
   };
 
@@ -149,7 +158,6 @@ export default function TagContent() {
           onValueChange={(v) => {
             setFilter(v);
             setPage(0);
-            reset();
           }}
         >
           <SelectTrigger className="w-[220px]" aria-label="Filter by tag">
@@ -200,8 +208,6 @@ export default function TagContent() {
       </Card>
     );
   }
-
-  const count = Object.keys(pending).length;
 
   return (
     <Card className="flex flex-col w-full gap-10 p-10">
@@ -256,9 +262,7 @@ export default function TagContent() {
             disabled={isUpdating || isFetching}
           />
 
-          <Button className="self-end px-10" onClick={save} disabled={isUpdating || count === 0}>
-            {isUpdating ? 'Saving...' : count > 0 ? `Save (${count})` : 'Save'}
-          </Button>
+          <SaveBar count={count} saving={isUpdating} progress={progress} onSave={save} onDiscard={reset} />
         </>
       )}
     </Card>
