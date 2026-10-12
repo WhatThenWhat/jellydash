@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { after, before, beforeEach, describe, it } from 'node:test';
-import { loadRatableItems, pageOf, ratableLibraries, searchRatable, sortForRating, tagPageOf, updateRatings, updateTags } from '../../lib/core/content.ts';
+import { loadRatableItems, NEEDS_RATING, pageOf, ratableLibraries, searchRatable, sortForRating, tagPageOf, updateRatings, updateTags } from '../../lib/core/content.ts';
 import { openDb } from '../../lib/core/db.ts';
 import { Service } from '../../lib/core/service.ts';
 import { Store } from '../../lib/core/store.ts';
@@ -43,6 +43,22 @@ describe('listing', () => {
     assert.equal(page.SeriesCount, 1);
   });
 
+  it('filters by rating, or by titles that still need one', async () => {
+    add('A', 'Movie', '2020-01-01T00:00:00Z', 'PG');
+    add('B', 'Movie', '2021-01-01T00:00:00Z', ' pg ');
+    add('C', 'Movie', '2022-01-01T00:00:00Z', 'G');
+    add('D', 'Series', '2023-01-01T00:00:00Z');
+    add('E', 'Movie', '2024-01-01T00:00:00Z', 'TV-XX');
+    const items = await loadRatableItems(client());
+    assert.deepEqual(pageOf(items, choices, 0, 10, 'PG').Items.map((i) => i.Name).sort(), ['A', 'B']);
+    assert.deepEqual(pageOf(items, choices, 0, 10, 'g').Items.map((i) => i.Name), ['C']);
+    const needs = pageOf(items, choices, 0, 10, NEEDS_RATING);
+    assert.deepEqual(needs.Items.map((i) => i.Name), ['E', 'D']);
+    assert.equal(needs.TotalRecordCount, 2);
+    assert.equal(needs.SeriesCount, 1);
+    assert.equal(pageOf(items, choices, 0, 10).TotalRecordCount, 5);
+  });
+
   it('matches ratings ignoring case and spaces', () => {
     const items = [{ Id: '1', Name: 'a', Type: 'Movie', OfficialRating: ' pg ' }, { Id: '2', Name: 'b', Type: 'Movie' }];
     assert.deepEqual(sortForRating(items, choices).map((i) => i.Id), ['2', '1']);
@@ -74,6 +90,16 @@ describe('updating ratings', () => {
     assert.deepEqual(r, { updated: 1, failed: [] });
     assert.equal(fake.catalog.get(it1.Id)!.OfficialRating, 'PG');
     assert.deepEqual([...fake.catalog.get(it1.Id)!.LockedFields!].sort(), ['Name', 'OfficialRating']);
+  });
+
+  it('clears a rating with an empty value and keeps the field locked', async () => {
+    const it1 = add('One', 'Movie', '2020-01-01T00:00:00Z', 'PG');
+    const r = await updateRatings(client(), [{ ItemId: it1.Id, Rating: '' }], choices);
+    assert.deepEqual(r, { updated: 1, failed: [] });
+    assert.equal(fake.catalog.get(it1.Id)!.OfficialRating, '');
+    assert.ok(fake.catalog.get(it1.Id)!.LockedFields!.includes('OfficialRating'));
+    const items = await loadRatableItems(client());
+    assert.equal(pageOf(items, choices, 0, 10, NEEDS_RATING).TotalRecordCount, 1);
   });
 
   it('rejects a rating that is not configured and a bad item id, before writing anything', async () => {

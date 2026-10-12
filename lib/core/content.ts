@@ -89,8 +89,25 @@ export async function loadRatableItems(client: JellyfinClient): Promise<RatableI
   return all.filter((i) => (seen.has(i.Id) ? false : (seen.add(i.Id), true)));
 }
 
-export function pageOf(items: RatableItem[], choices: RatingChoice[], page: number, limit: number): RatingPage {
-  const sorted = sortForRating(items, choices);
+/** Filter value for titles that have no rating or a rating outside the configured list. */
+export const NEEDS_RATING = '__needs__';
+
+export function pageOf(
+  items: RatableItem[],
+  choices: RatingChoice[],
+  page: number,
+  limit: number,
+  rating?: string
+): RatingPage {
+  let kept = items;
+  if (rating === NEEDS_RATING) {
+    const allowed = new Set(choices.map((c) => norm(c.value)));
+    kept = items.filter((i) => !i.OfficialRating || !allowed.has(norm(i.OfficialRating)));
+  } else if (rating) {
+    const wanted = norm(rating);
+    kept = items.filter((i) => norm(i.OfficialRating) === wanted);
+  }
+  const sorted = sortForRating(kept, choices);
   const start = Math.max(0, page) * limit;
   return {
     Items: sorted.slice(start, start + limit).map((i) => ({
@@ -125,9 +142,10 @@ export type RatingUpdate = { ItemId: unknown; Rating: unknown };
 export type RatingUpdateResult = { updated: number; failed: Array<{ id: string; error: string }> };
 
 /**
- * Write ratings one item at a time (Jellyfin re-reads metadata on each save).
- * A rating must be one of the configured choices. The OfficialRating field is locked so a
- * metadata refresh does not overwrite it, and fields that were already locked stay locked.
+ * Write ratings one item at a time. An empty rating clears the field (the title shows as unrated) (Jellyfin re-reads metadata on each save).
+ * and the field stays locked so a metadata refresh does not fill it again. Any other rating must be
+ * one of the configured choices. The OfficialRating field is locked so a metadata refresh does not
+ * overwrite it, and fields that were already locked stay locked.
  */
 export async function updateRatings(
   client: JellyfinClient,
@@ -140,6 +158,7 @@ export async function updateRatings(
   const prepared = updates.map((u) => {
     if (!isItemId(u?.ItemId)) throw new ValidationError('An item id is not valid');
     if (typeof u.Rating !== 'string') throw new ValidationError('A rating must be text');
+    if (u.Rating.trim() === '') return { id: u.ItemId, rating: '' };
     const value = byNorm.get(norm(u.Rating));
     if (value === undefined) throw new ValidationError(`"${u.Rating}" is not one of the configured ratings`);
     return { id: u.ItemId, rating: value };

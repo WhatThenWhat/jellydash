@@ -13,6 +13,9 @@ import {
 import useQueryHandler from '@/hooks/useQueryHandler';
 import ImageWithSkeleton from './ImageWithSkeleton';
 
+/** Select value meaning "remove the rating" (a Radix item cannot have an empty value). */
+export const NO_RATING = '__none__';
+
 export type RatingItem = {
   Id: string;
   Name: string;
@@ -63,6 +66,7 @@ export default function Items({ items, ratings, onRatingChange }: Readonly<Props
               <SelectContent>
                 <SelectGroup>
                   <SelectLabel>Official Rating</SelectLabel>
+                  <SelectItem value={NO_RATING}>No rating</SelectItem>
                   {(availableRatings ?? []).map((r) => (
                     <SelectItem key={r.id} value={r.value}>
                       {r.label}

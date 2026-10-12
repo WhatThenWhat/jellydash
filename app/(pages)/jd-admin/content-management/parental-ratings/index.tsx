@@ -9,7 +9,9 @@ import { useMutationHandler } from '@/hooks/useMutationHandler';
 import useQueryHandler from '@/hooks/useQueryHandler';
 import { Search, X } from 'lucide-react';
 import { useState } from 'react';
-import Items, { type RatingItem } from './components/Items';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import type { Rating } from '@/lib/shared/ratings';
+import Items, { NO_RATING, type RatingItem } from './components/Items';
 import { PaginationItems } from './components/Pagination';
 
 const PAGE_SIZE = 18;
@@ -29,14 +31,18 @@ export default function ParentalRatings() {
   const [page, setPage] = useState(0);
   const [text, setText] = useState('');
   const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState('all');
   const [ratings, setRatings] = useState<Record<string, string>>({});
 
-  const endpoint = query
-    ? `items/official-ratings-by-name?query=${encodeURIComponent(query)}&page=${page}&limit=${PAGE_SIZE}`
-    : `items/official-ratings?page=${page}&limit=${PAGE_SIZE}`;
+  const { data: choices } = useQueryHandler<Rating[]>({ queryKey: 'ratings', endpoint: 'ratings', serverScoped: false });
+
+  const endpoint =
+    `items/official-ratings?page=${page}&limit=${PAGE_SIZE}` +
+    (query ? `&query=${encodeURIComponent(query)}` : '') +
+    (filter !== 'all' ? `&rating=${encodeURIComponent(filter)}` : '');
 
   const { data, isError, error, isPending, isFetching } = useQueryHandler<RatingPage>({
-    queryKey: ['official-ratings', query, page],
+    queryKey: ['official-ratings', query, filter, page],
     endpoint
   });
 
@@ -70,7 +76,7 @@ export default function ParentalRatings() {
   };
 
   const save = async () => {
-    const updates = Object.entries(ratings).map(([ItemId, Rating]) => ({ ItemId, Rating }));
+    const updates = Object.entries(ratings).map(([ItemId, Rating]) => ({ ItemId, Rating: Rating === NO_RATING ? '' : Rating }));
     if (updates.length === 0) return;
 
     try {
@@ -99,11 +105,11 @@ export default function ParentalRatings() {
       <div>
         <CardTitle>Rate Content</CardTitle>
         <CardDescription>
-          Set the parental rating for movies and shows on the selected server. Titles without a configured rating are listed first.
+          Set or remove the parental rating for movies and shows on the selected server. Titles without a configured rating are listed first. Choose "No rating" to remove a rating.
         </CardDescription>
       </div>
       <form
-        className="flex gap-2 max-w-md"
+        className="flex gap-2 max-w-2xl"
         onSubmit={(e) => {
           e.preventDefault();
           runSearch();
@@ -124,6 +130,27 @@ export default function ParentalRatings() {
             <X className="h-4 w-4" />
           </Button>
         )}
+        <Select
+          value={filter}
+          onValueChange={(v) => {
+            setFilter(v);
+            setPage(0);
+            setRatings({});
+          }}
+        >
+          <SelectTrigger className="w-[220px]" aria-label="Filter by rating">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All titles</SelectItem>
+            <SelectItem value="__needs__">Needs a rating</SelectItem>
+            {(choices ?? []).map((r) => (
+              <SelectItem key={r.id} value={r.value}>
+                Rated {r.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </form>
     </CardHeader>
   );
@@ -157,7 +184,7 @@ export default function ParentalRatings() {
       {header}
 
       {data.Items.length === 0 ? (
-        <CardDescription>{query ? `No titles match "${query}".` : 'No movies or shows found on this server.'}</CardDescription>
+        <CardDescription>{query || filter !== 'all' ? 'No titles match the search and filter.' : 'No movies or shows found on this server.'}</CardDescription>
       ) : (
         <>
           <CardDescription>

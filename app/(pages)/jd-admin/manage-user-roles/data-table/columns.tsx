@@ -2,6 +2,7 @@
 
 import { DataTableColumnHeader } from '@/components/breeze-ui/data-table';
 import { toast } from '@/components/breeze-ui/toast/hooks/use-toast';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -97,6 +98,17 @@ function ActionsCell(group: Readonly<GroupDto>) {
   );
 }
 
+function TagsCell({ tags }: Readonly<{ tags: string[] }>) {
+  if (tags.length === 0) return '—';
+  return (
+    <div className="flex flex-wrap gap-1">
+      {tags.map((t) => (
+        <Badge key={t} variant="secondary">{t}</Badge>
+      ))}
+    </div>
+  );
+}
+
 export const columns: ColumnDef<GroupDto>[] = [
   {
     accessorKey: 'name',
@@ -108,6 +120,16 @@ export const columns: ColumnDef<GroupDto>[] = [
     id: 'maxRating',
     header: ({ column }) => <DataTableColumnHeader column={column} title="Max Parental Rating" />,
     cell: ({ row }) => <MaxRatingCell group={row.original} />
+  },
+  {
+    id: 'blockedTags',
+    header: 'Blocked Tags',
+    cell: ({ row }) => <TagsCell tags={row.original.blocked_tags} />
+  },
+  {
+    id: 'allowedTags',
+    header: 'Allowed Tags',
+    cell: ({ row }) => <TagsCell tags={row.original.allowed_tags} />
   },
   {
     id: 'libraries',
