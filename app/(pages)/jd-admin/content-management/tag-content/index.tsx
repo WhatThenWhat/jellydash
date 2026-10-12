@@ -32,7 +32,9 @@ export default function TagContent() {
 
   const { data: tags } = useQueryHandler<string[]>({ queryKey: 'content-tags', endpoint: 'content-tags', serverScoped: false });
 
-  const [mode, filterTag] = filter.includes(':') ? (filter.split(/:(.*)/s) as [string, string]) : ['all', ''];
+  const sep = filter.indexOf(':');
+  const mode = sep > 0 ? filter.slice(0, sep) : 'all';
+  const filterTag = sep > 0 ? filter.slice(sep + 1) : '';
   const endpoint =
     `items/tags?page=${page}&limit=${PAGE_SIZE}` +
     (query ? `&query=${encodeURIComponent(query)}` : '') +
